@@ -44,4 +44,46 @@ export const TONES = {
   green: 'bg-emerald-50 text-emerald-800 ring-emerald-200',
   rose: 'bg-rose-50 text-rose-800 ring-rose-200',
   slate: 'bg-slate-100 text-slate-700 ring-slate-200',
+  violet: 'bg-violet-50 text-violet-800 ring-violet-200',
+}
+
+export const REPORT_REASONS = [
+  { value: 'scam', label: 'প্রতারণা বা স্ক্যাম' },
+  { value: 'fake', label: 'নকল বা ভুয়া পণ্য' },
+  { value: 'prohibited', label: 'নিষিদ্ধ পণ্য' },
+  { value: 'wrong_category', label: 'ভুল ক্যাটাগরি বা তথ্য' },
+  { value: 'abusive', label: 'অশালীন বা আপত্তিকর' },
+  { value: 'duplicate', label: 'একই পোস্ট বারবার' },
+  { value: 'other', label: 'অন্য কারণ' },
+]
+
+export const PAYMENT_METHODS = [
+  { value: 'bkash', label: 'bKash', color: '#E2136E' },
+  { value: 'nagad', label: 'Nagad', color: '#F6921E' },
+  { value: 'rocket', label: 'Rocket', color: '#8C3494' },
+  { value: 'bank', label: 'ব্যাংক', color: '#0F766E' },
+]
+
+export const LEDGER_KINDS = {
+  deposit: { label: 'ডিপোজিট', sign: 1 },
+  test_credit: { label: 'টেস্ট ক্রেডিট', sign: 1 },
+  escrow_hold: { label: 'এসক্রো-তে জমা', sign: -1 },
+  escrow_release: { label: 'বিক্রির টাকা', sign: 1 },
+  escrow_refund: { label: 'এসক্রো ফেরত', sign: 1 },
+  withdrawal_hold: { label: 'উত্তোলন অনুরোধ', sign: -1 },
+  withdrawal_reversal: { label: 'উত্তোলন ফেরত', sign: 1 },
+  adjustment: { label: 'অ্যাডজাস্টমেন্ট', sign: 0 },
+  platform_fee: { label: 'প্ল্যাটফর্ম ফি', sign: 0 },
+}
+
+export const REPORT_STATUS = {
+  open: { label: 'নতুন', tone: 'rose' },
+  investigating: { label: 'তদন্তাধীন', tone: 'amber' },
+  resolved: { label: 'নিষ্পন্ন', tone: 'green' },
+  dismissed: { label: 'খারিজ', tone: 'slate' },
+}
+export const PRIORITY = {
+  normal: { label: 'সাধারণ', tone: 'slate' },
+  high: { label: 'উচ্চ', tone: 'amber' },
+  critical: { label: 'জরুরি', tone: 'rose' },
 }

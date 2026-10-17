@@ -11,8 +11,8 @@ export async function startConversation(listingId, buyerId) {
 const CONVERSATION_SELECT = `
   id, listing_id, buyer_id, seller_id, last_message_at, last_message_preview, last_sender_id,
   listing:listings(id, title, price, image_url, status),
-  buyer:profiles!conversations_buyer_id_fkey(id, full_name, avatar_url),
-  seller:profiles!conversations_seller_id_fkey(id, full_name, avatar_url)
+  buyer:profiles!conversations_buyer_id_fkey(id, full_name, avatar_url, last_seen_at),
+  seller:profiles!conversations_seller_id_fkey(id, full_name, avatar_url, last_seen_at)
 `
 
 export async function fetchConversations() {
@@ -34,7 +34,7 @@ export async function fetchConversation(id) {
 export async function fetchMessages(conversationId, { before, limit = 40 } = {}) {
   let q = supabase
     .from('messages')
-    .select('id, conversation_id, sender_id, body, created_at, read_at')
+    .select('id, conversation_id, sender_id, body, created_at, delivered_at, read_at')
     .eq('conversation_id', conversationId)
     .order('created_at', { ascending: false })
     .limit(limit)
@@ -48,7 +48,7 @@ export async function sendMessage(conversationId, body) {
   const { data, error } = await supabase
     .from('messages')
     .insert({ conversation_id: conversationId, body })
-    .select('id, conversation_id, sender_id, body, created_at, read_at')
+    .select('id, conversation_id, sender_id, body, created_at, delivered_at, read_at')
     .single()
   if (error) throw error
   return data
@@ -78,3 +78,7 @@ export async function fetchUnreadCount(userId) {
   if (error) throw error
   return count ?? 0
 }
+
+export const markConversationDelivered = (conversationId) =>
+  supabase.rpc('mark_conversation_delivered', { p_conversation_id: conversationId })
+export const markAllDelivered = () => supabase.rpc('mark_all_delivered')

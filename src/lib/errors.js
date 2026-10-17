@@ -11,7 +11,21 @@ const CODES = {
   ORDER_NOT_FOUND: 'অর্ডারটি খুঁজে পাওয়া যায়নি।',
   INVALID_STATE: 'অর্ডারের অবস্থা বদলে গেছে। পেজটি রিফ্রেশ করে আবার দেখুন।',
   PAYMENTS_LIVE: 'টেস্ট পেমেন্ট বন্ধ। পেমেন্ট গেটওয়ে দিয়ে টাকা দিন।',
-  REASON_TOO_SHORT: 'সমস্যাটি অন্তত কয়েক শব্দে লিখুন।',
+  REASON_TOO_SHORT: 'কারণটি অন্তত কয়েক শব্দে লিখুন।',
+  USE_WALLET: 'এখন ওয়ালেট থেকে পেমেন্ট করতে হবে।',
+  INSUFFICIENT_BALANCE: 'ওয়ালেটে যথেষ্ট ব্যালেন্স নেই। আগে টাকা যোগ করুন।',
+  ACCOUNT_BANNED: 'আপনার অ্যাকাউন্ট সীমিত করা হয়েছে। সাপোর্টে যোগাযোগ করুন।',
+  AMOUNT_TOO_LOW: 'পরিমাণ সর্বনিম্ন সীমার চেয়ে কম।',
+  AMOUNT_TOO_HIGH: 'পরিমাণ সর্বোচ্চ সীমার চেয়ে বেশি।',
+  INVALID_AMOUNT: 'সঠিক পরিমাণ লিখুন।',
+  INVALID_TRX: 'TrxID সঠিক নয়। ৬-২০ অক্ষরের অক্ষর/সংখ্যা দিন।',
+  INVALID_NUMBER: 'নম্বরটি সঠিক নয়। ০১XXXXXXXXX ফরম্যাটে দিন।',
+  TOO_MANY_PENDING: 'আপনার ৫টি অনুরোধ এখনো যাচাই বাকি। অপেক্ষা করুন।',
+  PAYMENTS_TEST_MODE: 'সাইট এখন টেস্ট মোডে। আসল ডিপোজিট চালু হয়নি।',
+  DAILY_LIMIT: 'আজকের উত্তোলনের সীমা পার হয়ে যাবে।',
+  REF_REQUIRED: 'পেআউটের রেফারেন্স/TrxID দিন।',
+  TOO_MANY_REPORTS: 'আজ অনেক রিপোর্ট করেছেন। কাল আবার চেষ্টা করুন।',
+  NOT_FOUND: 'খুঁজে পাওয়া যায়নি।',
 }
 
 export function friendlyError(err, fallback = 'কিছু একটা সমস্যা হয়েছে। একটু পরে আবার চেষ্টা করুন।') {
@@ -39,7 +53,11 @@ export function friendlyError(err, fallback = 'কিছু একটা সম�
     return 'এই কাজের অনুমতি নেই। লগইন করা আছে কিনা দেখুন।'
   if (code === 'PGRST202' || code === '42P01' || code === 'PGRST205' || low.includes('does not exist'))
     return 'এই ফিচারের ডাটাবেস সেটআপ বাকি আছে। /supabase ফোল্ডারের SQL ফাইলটি চালান।'
-  if (code === '23505') return 'এটি আগেই করা হয়েছে।'
+  if (code === '23505') {
+    if (low.includes('deposit_trx')) return 'এই TrxID আগেই ব্যবহার করা হয়েছে।'
+    if (low.includes('reports_one_open')) return 'আপনি আগেই এটি রিপোর্ট করেছেন। আমাদের টিম দেখছে।'
+    return 'এটি আগেই করা হয়েছে।'
+  }
   if (low.includes('bucket not found')) return 'ছবি রাখার বাকেট (product-images) পাওয়া যায়নি।'
 
   return fallback

@@ -4,12 +4,13 @@ import Link from 'next/link'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/components/auth/AuthProvider'
+import { useOnline } from '@/components/auth/LiveProvider'
 import Icon from '@/components/ui/Icons'
 import { Avatar, SmartImage } from '@/components/ui/Media'
 import { EmptyState, ErrorState, Spinner } from '@/components/ui/Feedback'
 import { fetchConversation, fetchMessages, markConversationRead, sendMessage } from '@/lib/services/chat'
 import { friendlyError } from '@/lib/errors'
-import { formatDate, formatPrice, formatTime, isSameDay } from '@/lib/format'
+import { formatDate, formatPrice, formatTime, isSameDay, timeAgo } from '@/lib/format'
 
 const PAGE = 40
 
@@ -18,6 +19,16 @@ function merge(prev, incoming) {
   const map = new Map(prev.map((m) => [m.id, m]))
   incoming.forEach((m) => map.set(m.id, m))
   return [...map.values()].sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+}
+
+// Sent = one grey tick, delivered = two grey ticks, seen = two blue ticks. Clock while still sending.
+function Ticks({ m }) {
+  if (m.pending) return <Icon name="clock" className="ml-1 inline h-3 w-3 translate-y-[1px] text-white/60" strokeWidth={2.2} />
+  if (m.read_at)
+    return <Icon name="doublecheck" className="ml-1 inline h-[15px] w-[15px] translate-y-[2px] text-sky-300" strokeWidth={2.4} aria-label="দেখেছেন" />
+  if (m.delivered_at)
+    return <Icon name="doublecheck" className="ml-1 inline h-[15px] w-[15px] translate-y-[2px] text-white/60" strokeWidth={2.4} aria-label="পৌঁছেছে" />
+  return <Icon name="check" className="ml-1 inline h-[14px] w-[14px] translate-y-[2px] text-white/60" strokeWidth={2.4} aria-label="পাঠানো হয়েছে" />
 }
 
 export default function ChatThread({ conversationId }) {
@@ -29,12 +40,17 @@ export default function ChatThread({ conversationId }) {
   const [hasMore, setHasMore] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [draft, setDraft] = useState('')
+  const [typing, setTyping] = useState(false)
 
   const scroller = useRef(null)
   const stick = useRef(true)
   const textarea = useRef(null)
+  const channelRef = useRef(null)
+  const typingTimer = useRef(null)
+  const lastTypingSent = useRef(0)
 
   const other = conv ? (user.id === conv.buyer_id ? conv.seller : conv.buyer) : null
+  const otherOnline = useOnline(other?.id)
 
   const syncLatest = useCallback(async () => {
     const latest = await fetchMessages(conversationId, { limit: PAGE })
@@ -70,9 +86,10 @@ export default function ChatThread({ conversationId }) {
     }
   }, [conversationId])
 
-  // Realtime: new messages for this conversation (RLS guarantees we only get our own).
+  // Realtime: new messages, tick updates (delivered/seen) and the typing indicator.
   useEffect(() => {
     if (!conv) return
+    const markRead = () => document.visibilityState === 'visible' && markConversationRead(conversationId)
     const channel = supabase
       .channel(`thread:${conversationId}`)
       .on(
@@ -87,21 +104,40 @@ export default function ChatThread({ conversationId }) {
               return i < 0 ? p : p.filter((_, j) => j !== i)
             })
           } else {
-            markConversationRead(conversationId)
+            setTyping(false)
+            markRead()
           }
         }
       )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` },
+        ({ new: m }) => setMessages((prev) => merge(prev, [m]))
+      )
+      .on('broadcast', { event: 'typing' }, ({ payload }) => {
+        if (payload?.user === user.id) return
+        setTyping(true)
+        clearTimeout(typingTimer.current)
+        typingTimer.current = setTimeout(() => setTyping(false), 3500)
+      })
       .subscribe((status) => {
         // (Re)connected: fetch anything we missed while offline or while the tab slept.
         if (status === 'SUBSCRIBED') syncLatest().catch(() => {})
         if (status === 'CHANNEL_ERROR') toast.error('লাইভ সংযোগে সমস্যা। নতুন মেসেজ দেখতে পেজ রিফ্রেশ করুন।', { id: 'rt-error' })
       })
+    channelRef.current = channel
 
-    const onVisible = () => document.visibilityState === 'visible' && syncLatest().catch(() => {})
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return
+      syncLatest().catch(() => {})
+      markConversationRead(conversationId)
+    }
     document.addEventListener('visibilitychange', onVisible)
     return () => {
+      clearTimeout(typingTimer.current)
       document.removeEventListener('visibilitychange', onVisible)
       supabase.removeChannel(channel)
+      channelRef.current = null
     }
   }, [conv, conversationId, user.id, syncLatest])
 
@@ -109,7 +145,7 @@ export default function ChatThread({ conversationId }) {
   useLayoutEffect(() => {
     const el = scroller.current
     if (el && stick.current) el.scrollTop = el.scrollHeight
-  }, [messages, pending, conv])
+  }, [messages, pending, conv, typing])
 
   const onScroll = () => {
     const el = scroller.current
@@ -163,6 +199,11 @@ export default function ChatThread({ conversationId }) {
 
   const onInput = (e) => {
     setDraft(e.target.value)
+    const now = Date.now()
+    if (channelRef.current && now - lastTypingSent.current > 2000) {
+      lastTypingSent.current = now
+      channelRef.current.send({ type: 'broadcast', event: 'typing', payload: { user: user.id } })
+    }
     e.target.style.height = 'auto'
     e.target.style.height = `${Math.min(e.target.scrollHeight, 128)}px`
   }
@@ -199,10 +240,25 @@ export default function ChatThread({ conversationId }) {
         <Link href="/messages" aria-label="সব মেসেজ" className="flex h-9 w-9 items-center justify-center rounded-full text-teal-900 hover:bg-teal-900/[0.07] md:hidden">
           <Icon name="back" />
         </Link>
-        <Avatar name={other?.full_name} url={other?.avatar_url} className="h-10 w-10" />
+        <Link href={`/u/${other?.id}`} className="relative shrink-0" aria-label="প্রোফাইল দেখুন">
+          <Avatar name={other?.full_name} url={other?.avatar_url} className="h-10 w-10" />
+          {otherOnline && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-white" />}
+        </Link>
         <div className="min-w-0 flex-1">
           <p className="truncate font-semibold text-teal-950">{other?.full_name || 'ব্যবহারকারী'}</p>
-          <p className="truncate text-[13px] text-slate-500">{user.id === conv.buyer_id ? 'বিক্রেতা' : 'ক্রেতা'}</p>
+          <p className="flex items-center gap-1.5 truncate text-[13px]">
+            {typing ? (
+              <span className="font-semibold text-teal-700">লিখছে…</span>
+            ) : otherOnline ? (
+              <span className="flex items-center gap-1.5 font-medium text-emerald-600">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" /> অনলাইন
+              </span>
+            ) : (
+              <span className="text-slate-500">
+                {other?.last_seen_at ? `সর্বশেষ ${timeAgo(other.last_seen_at)} দেখা গেছে` : user.id === conv.buyer_id ? 'বিক্রেতা' : 'ক্রেতা'}
+              </span>
+            )}
+          </p>
         </div>
         {conv.listing && (
           <Link
@@ -258,14 +314,24 @@ export default function ChatThread({ conversationId }) {
                     >
                       {m.body}
                       <span className={`ml-2 inline-block translate-y-[3px] text-[11px] ${mine ? 'text-white/60' : 'text-slate-400'}`}>
-                        {m.pending ? '...' : formatTime(m.created_at)}
+                        {formatTime(m.created_at)}
                       </span>
+                      {mine && <Ticks m={m} />}
                     </div>
                   </div>
                 </li>
               )
             })}
           </ul>
+        )}
+        {typing && (
+          <div className="bubble-in mt-3 flex" aria-live="polite">
+            <span className="flex items-center gap-1 rounded-2xl rounded-bl-md bg-white px-4 py-3 ring-1 ring-teal-900/[0.06]">
+              {[0, 150, 300].map((d) => (
+                <span key={d} className="h-1.5 w-1.5 animate-bounce rounded-full bg-teal-700/60" style={{ animationDelay: `${d}ms` }} />
+              ))}
+            </span>
+          </div>
         )}
       </div>
 

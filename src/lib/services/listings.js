@@ -49,7 +49,7 @@ export async function fetchLocations() {
 export async function fetchListingById(id) {
   const { data, error } = await supabase
     .from('listings')
-    .select('*, seller:profiles(id, full_name, avatar_url, created_at)')
+    .select('*, seller:profiles(id, full_name, avatar_url, created_at, university)')
     .eq('id', id)
     .maybeSingle()
   if (error) {
@@ -88,3 +88,37 @@ export async function markListingSold(id) {
   const { error } = await supabase.rpc('mark_listing_sold', { p_listing_id: String(id) })
   if (error) throw error
 }
+
+export async function updateListing(id, values) {
+  const { error } = await supabase.from('listings').update(values).eq('id', id)
+  if (error) throw error
+}
+
+export async function fetchMyListings(userId) {
+  const { data, error } = await supabase
+    .from('listings')
+    .select('id, title, price, image_url, status, category, views, created_at, hidden_reason')
+    .eq('seller_id', userId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function fetchListingsBySeller(sellerId) {
+  const { data, error } = await supabase
+    .from('listings')
+    .select('id, title, price, location, image_url, category, condition, status, created_at, seller_id')
+    .eq('seller_id', sellerId)
+    .in('status', ['active', 'reserved', 'sold'])
+    .order('created_at', { ascending: false })
+    .limit(48)
+  if (error) throw error
+  return data ?? []
+}
+
+export const reopenListing = async (id) => {
+  const { error } = await supabase.rpc('reopen_listing', { p_listing_id: String(id) })
+  if (error) throw error
+}
+
+export const bumpViews = (id) => supabase.rpc('bump_listing_views', { p_listing_id: String(id) })

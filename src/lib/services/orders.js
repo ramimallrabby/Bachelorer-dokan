@@ -16,6 +16,7 @@ export function getEscrowConfig() {
       const s = Object.fromEntries((data ?? []).map((r) => [r.key, r.value]))
       return {
         mode: s.payments_mode ?? 'test',
+        settings: s,
         feeBps: Number(s.escrow_fee_bps ?? 0),
         autoReleaseHours: Number(s.auto_release_hours ?? 72),
       }
@@ -34,16 +35,10 @@ async function rpc(name, args) {
 export const createOrder = (listingId, note) =>
   rpc('create_order', { p_listing_id: String(listingId), p_note: note?.trim() || null })
 
-/**
- * THE swap point for real payments.
- * Test mode: the database marks the order as funded instantly (no money moves).
- * Live mode: replace the body with a redirect to your gateway checkout
- * (SSLCommerz / bKash / aamarPay...). The gateway's server-to-server callback then
- * calls `fund_order` with the service-role key. See GUIDE.md, "Going live".
- */
+/** Pays from the buyer's wallet. All-or-nothing in the database: no half-paid orders. */
 export async function payForOrder(orderId) {
-  const result = await rpc('simulate_payment', { p_order_id: orderId })
-  if (result !== 'funded') throw new Error(result) // e.g. LISTING_UNAVAILABLE
+  const result = await rpc('pay_order_with_wallet', { p_order_id: orderId })
+  if (result !== 'funded') throw new Error(result)
 }
 
 export const markDelivered = (orderId) => rpc('mark_delivered', { p_order_id: orderId })

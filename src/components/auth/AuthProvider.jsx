@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { friendlyError } from '@/lib/errors'
 
-const AuthContext = createContext({ user: null, profile: null, loading: true, signOut: async () => {} })
+const AuthContext = createContext({ user: null, profile: null, isAdmin: false, loading: true, signOut: async () => {}, refreshProfile: async () => {} })
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(undefined) // undefined = still checking
@@ -19,22 +19,26 @@ export function AuthProvider({ children }) {
   }, [])
 
   const userId = session?.user?.id
+  const refreshProfile = useCallback(async () => {
+    if (!userId) return
+    const [{ data }, flags] = await Promise.all([
+      supabase
+        .from('profiles')
+        .select('id, full_name, avatar_url, cover_url, university, department, city, bio')
+        .eq('id', userId)
+        .maybeSingle(),
+      supabase.rpc('my_flags'),
+    ])
+    setProfile(data ? { ...data, ...(flags.data?.[0] ?? {}) } : data)
+  }, [userId])
+
   useEffect(() => {
     if (!userId) {
       setProfile(null)
       return
     }
-    let cancelled = false
-    supabase
-      .from('profiles')
-      .select('id, full_name, avatar_url, university')
-      .eq('id', userId)
-      .maybeSingle()
-      .then(({ data }) => !cancelled && setProfile(data))
-    return () => {
-      cancelled = true
-    }
-  }, [userId])
+    refreshProfile()
+  }, [userId, refreshProfile])
 
   const signOut = useCallback(async () => {
     const { error } = await supabase.auth.signOut()
@@ -43,8 +47,8 @@ export function AuthProvider({ children }) {
   }, [])
 
   const value = useMemo(
-    () => ({ user: session?.user ?? null, profile, loading: session === undefined, signOut }),
-    [session, profile, signOut]
+    () => ({ user: session?.user ?? null, profile, isAdmin: !!profile?.is_admin, loading: session === undefined, signOut, refreshProfile }),
+    [session, profile, signOut, refreshProfile]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

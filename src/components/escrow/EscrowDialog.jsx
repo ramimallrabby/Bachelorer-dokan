@@ -1,7 +1,10 @@
 'use client'
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import { useAuth } from '@/components/auth/AuthProvider'
+import useWallet from '@/hooks/useWallet'
 import Button from '@/components/ui/Button'
 import Dialog from '@/components/ui/Dialog'
 import Icon from '@/components/ui/Icons'
@@ -19,6 +22,8 @@ const STEPS = [
 
 export default function EscrowDialog({ open, onClose, listing, sellerName }) {
   const router = useRouter()
+  const { user } = useAuth()
+  const { balance } = useWallet(user?.id)
   const [config, setConfig] = useState(null)
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -29,6 +34,7 @@ export default function EscrowDialog({ open, onClose, listing, sellerName }) {
 
   const fee = config ? calcFee(listing.price, config.feeBps) : 0
   const total = Number(listing.price) + fee
+  const short = balance !== null && balance < total
 
   async function pay() {
     setBusy(true)
@@ -89,10 +95,27 @@ export default function EscrowDialog({ open, onClose, listing, sellerName }) {
         </div>
       </dl>
 
+      <div className={`mt-4 flex items-center justify-between gap-3 rounded-2xl p-4 ring-1 ${short ? 'bg-rose-50 ring-rose-200' : 'bg-teal-900/[0.05] ring-teal-900/10'}`}>
+        <div className="flex items-center gap-3">
+          <span className={`flex h-10 w-10 items-center justify-center rounded-xl ${short ? 'bg-rose-100 text-rose-700' : 'bg-white text-teal-800'}`}>
+            <Icon name="wallet" className="h-5 w-5" />
+          </span>
+          <div>
+            <p className="text-[13px] text-slate-500">ওয়ালেট ব্যালেন্স</p>
+            <p className="font-display text-lg font-extrabold text-teal-950">{balance === null ? '…' : formatPrice(balance)}</p>
+          </div>
+        </div>
+        {short && (
+          <Link href="/wallet" className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-500">
+            {formatPrice(total - balance)} যোগ করুন
+          </Link>
+        )}
+      </div>
+
       {config?.mode === 'test' && (
-        <p className="mt-4 flex gap-2 rounded-xl bg-amber-50 p-3 text-sm leading-relaxed text-amber-900 ring-1 ring-amber-200">
+        <p className="mt-3 flex gap-2 rounded-xl bg-amber-50 p-3 text-sm leading-relaxed text-amber-900 ring-1 ring-amber-200">
           <Icon name="alert" className="mt-0.5 h-4 w-4" />
-          টেস্ট মোড: এখানে আসল টাকা কাটা হবে না। শুধু পুরো প্রক্রিয়াটি চালিয়ে দেখা যাবে।
+          টেস্ট মোড: ওয়ালেটে থাকা টাকা খেলার টাকা। আসল টাকা লেনদেন হচ্ছে না।
         </p>
       )}
 
@@ -100,9 +123,9 @@ export default function EscrowDialog({ open, onClose, listing, sellerName }) {
         <Button variant="soft" size="lg" onClick={onClose} disabled={busy}>
           বাতিল
         </Button>
-        <Button variant="primary" size="lg" loading={busy} disabled={!config} onClick={pay}>
+        <Button variant="primary" size="lg" loading={busy} disabled={!config || short || balance === null} onClick={pay}>
           <Icon name="lock" className="h-5 w-5" />
-          {formatPrice(total)} এসক্রো-তে জমা দিন
+          ওয়ালেট থেকে {formatPrice(total)} জমা দিন
         </Button>
       </div>
     </Dialog>

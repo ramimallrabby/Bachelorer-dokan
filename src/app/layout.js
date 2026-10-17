@@ -3,7 +3,10 @@ import { Toaster } from 'sonner'
 import './globals.css'
 import './dokan.css' // keep AFTER globals.css
 import { AuthProvider } from '@/components/auth/AuthProvider'
+import { LiveProvider } from '@/components/auth/LiveProvider'
 import Navbar from '@/components/layout/Navbar'
+import Footer from '@/components/layout/Footer'
+import { Suspense } from 'react'
 
 const body = Hind_Siliguri({
   subsets: ['bengali', 'latin'],
@@ -39,8 +42,13 @@ export default function RootLayout({ children }) {
     <html lang="bn" className={`${body.variable} ${display.variable}`}>
       <body className="min-h-screen antialiased">
         <AuthProvider>
-          <Navbar />
-          {children}
+          <LiveProvider>
+            <Suspense fallback={<div className="h-[68px]" />}>
+              <Navbar />
+            </Suspense>
+            {children}
+            <Footer />
+          </LiveProvider>
         </AuthProvider>
         <Toaster
           position="top-center"

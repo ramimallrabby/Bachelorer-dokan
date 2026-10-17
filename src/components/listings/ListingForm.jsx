@@ -9,7 +9,7 @@ import { Chip, Field, Input, Select, Textarea } from '@/components/ui/Form'
 import { compressImage } from '@/lib/image'
 import { friendlyError } from '@/lib/errors'
 import { CATEGORIES, CONDITIONS, MAX_IMAGE_MB } from '@/lib/constants'
-import { createListing, fetchLocations, removeListingImage, uploadListingImage } from '@/lib/services/listings'
+import { createListing, fetchLocations, removeListingImage, updateListing, uploadListingImage } from '@/lib/services/listings'
 
 const EMPTY = { title: '', category: '', condition: 'good', price: '', location: '', description: '' }
 
@@ -23,15 +23,30 @@ function validate(v) {
   return e
 }
 
-export default function ListingForm() {
+// `listing` set = edit mode (seller changes their own post). Unset = create mode.
+export default function ListingForm({ listing = null }) {
+  const editing = !!listing
   const { user } = useAuth()
   const router = useRouter()
   const inputRef = useRef(null)
 
-  const [values, setValues] = useState(EMPTY)
+  const [values, setValues] = useState(
+    listing
+      ? {
+          title: listing.title ?? '',
+          category: listing.category ?? '',
+          condition: listing.condition ?? 'good',
+          price: String(listing.price ?? ''),
+          location: listing.location ?? '',
+          description: listing.description ?? '',
+        }
+      : EMPTY
+  )
+  const [existingUrl, setExistingUrl] = useState(listing?.image_url ?? null)
   const [errors, setErrors] = useState({})
   const [file, setFile] = useState(null)
   const [preview, setPreview] = useState(null)
+  const shownImage = preview || existingUrl
   const [dragging, setDragging] = useState(false)
   const [step, setStep] = useState(null) // null | progress label while submitting
   const [locations, setLocations] = useState([])
@@ -66,6 +81,23 @@ export default function ListingForm() {
         uploaded = await uploadListingImage(user.id, blob)
       }
       setStep('প্রোডাক্ট সেভ হচ্ছে...')
+      if (editing) {
+        await updateListing(listing.id, {
+          title: values.title.trim(),
+          category: values.category,
+          condition: values.condition,
+          price: Math.round(Number(values.price)),
+          location: values.location.trim(),
+          description: values.description.trim(),
+          image_url: uploaded ? uploaded.url : existingUrl,
+        })
+        // best-effort: delete the replaced / removed photo
+        const oldPath = listing.image_url?.split('/product-images/')[1]
+        if (oldPath && (uploaded || !existingUrl) && oldPath.startsWith(`${user.id}/`)) removeListingImage(oldPath)
+        toast.success('পরিবর্তন সেভ হয়েছে!')
+        router.push(`/product/${listing.id}`)
+        return
+      }
       const { id } = await createListing({
         title: values.title.trim(),
         category: values.category,
@@ -75,7 +107,6 @@ export default function ListingForm() {
         description: values.description.trim(),
         image_url: uploaded?.url ?? null,
         seller_id: user.id, // links the product to its seller
-        status: 'active', // <--- ডাটাবেজের constraint ঠিক করার জন্য এটি যুক্ত করা হয়েছে
       })
       toast.success('প্রোডাক্ট যোগ করা হয়েছে!')
       router.push(`/product/${id}`)
@@ -90,8 +121,10 @@ export default function ListingForm() {
 
   return (
     <main className="mx-auto max-w-6xl px-4 pb-20 pt-10 sm:px-6 lg:px-8">
-      <h1 className="font-display text-3xl font-extrabold text-teal-950 sm:text-4xl">নতুন প্রোডাক্ট যোগ করুন</h1>
-      <p className="mt-2 max-w-xl text-slate-500">পরিষ্কার ছবি আর সৎ বিবরণ দিলে দ্রুত ক্রেতা পাবেন।</p>
+      <h1 className="font-display text-3xl font-extrabold text-teal-950 sm:text-4xl">{editing ? 'প্রোডাক্ট এডিট করুন' : 'নতুন প্রোডাক্ট যোগ করুন'}</h1>
+      <p className="mt-2 max-w-xl text-slate-500">
+        {editing ? 'দাম, ছবি বা বিবরণ বদলে সেভ করুন। চালু এসক্রো অর্ডার থাকলে এডিট বন্ধ থাকে।' : 'পরিষ্কার ছবি আর সৎ বিবরণ দিলে দ্রুত ক্রেতা পাবেন।'}
+      </p>
 
       <form onSubmit={onSubmit} noValidate className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
         <div className="lg:sticky lg:top-24 lg:self-start">
@@ -111,10 +144,10 @@ export default function ListingForm() {
             }`}
           >
             <input ref={inputRef} type="file" accept="image/*" className="sr-only" onChange={(e) => pickFile(e.target.files?.[0])} />
-            {preview ? (
+            {shownImage ? (
               <>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={preview} alt="নির্বাচিত ছবির প্রিভিউ" className="absolute inset-0 h-full w-full object-cover" />
+                <img src={shownImage} alt="নির্বাচিত ছবির প্রিভিউ" className="absolute inset-0 h-full w-full object-cover" />
                 <span className="absolute bottom-3 left-3 rounded-full bg-white/80 px-3 py-1.5 text-sm font-semibold text-teal-950 backdrop-blur-md">
                   ছবি বদলান
                 </span>
@@ -129,12 +162,13 @@ export default function ListingForm() {
               </div>
             )}
           </label>
-          {preview && (
+          {shownImage && (
             <button
               type="button"
               onClick={() => {
                 setFile(null)
                 setPreview(null)
+                setExistingUrl(null)
                 if (inputRef.current) inputRef.current.value = ''
               }}
               className="mt-3 flex items-center gap-1.5 text-sm font-semibold text-rose-600 hover:text-rose-700"
@@ -196,7 +230,7 @@ export default function ListingForm() {
           </Field>
 
           <Button type="submit" variant="dark" size="lg" className="w-full" loading={busy}>
-            {busy ? step : 'পোস্ট করুন'}
+            {busy ? step : editing ? 'পরিবর্তন সেভ করুন' : 'পোস্ট করুন'}
           </Button>
         </div>
       </form>

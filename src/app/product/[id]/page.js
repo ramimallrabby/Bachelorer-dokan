@@ -4,6 +4,8 @@ import { notFound } from 'next/navigation'
 import Icon from '@/components/ui/Icons'
 import { Avatar, SmartImage } from '@/components/ui/Media'
 import ProductActions from '@/components/product/ProductActions'
+import ReportButton from '@/components/report/ReportButton'
+import ViewCounter from '@/components/product/ViewCounter'
 import { fetchListingById } from '@/lib/services/listings'
 import { CATEGORIES, CONDITIONS, labelOf } from '@/lib/constants'
 import { formatDate, formatPrice, timeAgo } from '@/lib/format'
@@ -39,6 +41,7 @@ export default async function ProductPage({ params }) {
 
   return (
     <main className="mx-auto max-w-6xl px-4 pb-36 pt-6 sm:px-6 md:pb-16 lg:px-8">
+      <ViewCounter id={listing.id} />
       <Link href="/" className="inline-flex items-center gap-2 rounded-full py-2 pr-4 text-sm font-semibold text-teal-800 transition hover:text-teal-950">
         <Icon name="back" className="h-4 w-4" /> সব প্রোডাক্ট
       </Link>
@@ -55,7 +58,7 @@ export default async function ProductPage({ params }) {
             {listing.status !== 'active' && (
               <div className="absolute inset-0 flex items-center justify-center bg-teal-950/50 backdrop-blur-[3px]">
                 <span className="rounded-full bg-white/90 px-6 py-2 text-lg font-bold text-teal-950">
-                  {listing.status === 'sold' ? 'বিক্রি হয়ে গেছে' : 'রিজার্ভড'}
+                  {listing.status === 'sold' ? 'বিক্রি হয়ে গেছে' : listing.status === 'hidden' ? 'পর্যালোচনায়' : 'রিজার্ভড'}
                 </span>
               </div>
             )}
@@ -71,7 +74,10 @@ export default async function ProductPage({ params }) {
           <h1 className="font-display mt-4 text-[30px] font-extrabold leading-[1.35] text-teal-950 sm:text-4xl">{listing.title}</h1>
           <div className="mt-3 flex items-baseline gap-3">
             <p className="font-display text-4xl font-extrabold text-teal-900">{formatPrice(listing.price)}</p>
-            <p className="text-sm text-slate-500">{timeAgo(listing.created_at)} যোগ করা হয়েছে</p>
+            <p className="text-sm text-slate-500">
+              {timeAgo(listing.created_at)} যোগ করা হয়েছে
+              {listing.views > 0 && ` · ${Number(listing.views).toLocaleString('bn-BD')} বার দেখা হয়েছে`}
+            </p>
           </div>
 
           <section className="mt-7">
@@ -79,13 +85,19 @@ export default async function ProductPage({ params }) {
             <p className="whitespace-pre-wrap text-[16px] leading-[1.85] text-slate-600">{listing.description}</p>
           </section>
 
-          <section className="mt-7 flex items-center gap-3.5 rounded-2xl bg-white p-4 ring-1 ring-teal-900/[0.07]">
+          <Link
+            href={seller?.id ? `/u/${seller.id}` : '#'}
+            className="group mt-7 flex items-center gap-3.5 rounded-2xl bg-white p-4 ring-1 ring-teal-900/[0.07] transition hover:ring-teal-900/25"
+          >
             <Avatar name={sellerName} url={seller?.avatar_url} className="h-12 w-12 text-base" />
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="truncate font-semibold text-teal-950">{sellerName}</p>
-              <p className="text-sm text-slate-500">{seller?.created_at ? `${formatDate(seller.created_at)} থেকে সদস্য` : 'বিক্রেতা'}</p>
+              <p className="truncate text-sm text-slate-500">
+                {[seller?.university, seller?.created_at ? `${formatDate(seller.created_at)} থেকে সদস্য` : null].filter(Boolean).join(' · ') || 'বিক্রেতা'}
+              </p>
             </div>
-          </section>
+            <Icon name="next" className="h-5 w-5 text-teal-800/50 transition group-hover:translate-x-0.5 group-hover:text-teal-800" />
+          </Link>
 
           <section className="mt-4 flex gap-3.5 rounded-2xl bg-[linear-gradient(135deg,rgba(15,118,110,0.1),rgba(251,191,36,0.16))] p-4 ring-1 ring-teal-900/10">
             <Icon name="shield" className="mt-0.5 h-6 w-6 text-teal-800" />
@@ -108,6 +120,11 @@ export default async function ProductPage({ params }) {
             }}
             sellerName={sellerName}
           />
+
+          <div className="mt-6 flex items-center justify-between border-t border-teal-900/10 pt-4">
+            <p className="text-sm text-slate-400">প্রোডাক্ট আইডি: {String(listing.id).slice(0, 8)}</p>
+            <ReportButton type="listing" targetId={listing.id} ownerId={listing.seller_id} />
+          </div>
         </div>
       </div>
     </main>

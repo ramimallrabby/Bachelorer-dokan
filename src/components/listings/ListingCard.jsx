@@ -32,6 +32,11 @@ export default function ListingCard({ item }) {
             {condition}
           </span>
         )}
+        {item.status === 'sold' && (
+          <div className="absolute inset-0 flex items-center justify-center bg-teal-950/50 backdrop-blur-[2px]">
+            <span className="rounded-full bg-white/90 px-4 py-1.5 text-sm font-bold text-teal-950">বিক্রি হয়ে গেছে</span>
+          </div>
+        )}
         {reserved && (
           <div className="absolute inset-0 flex items-center justify-center bg-teal-950/45 backdrop-blur-[2px]">
             <span className="rounded-full bg-white/90 px-4 py-1.5 text-sm font-bold text-teal-950">রিজার্ভড</span>

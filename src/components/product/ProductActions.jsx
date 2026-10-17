@@ -8,7 +8,7 @@ import Dialog from '@/components/ui/Dialog'
 import Icon from '@/components/ui/Icons'
 import EscrowDialog from '@/components/escrow/EscrowDialog'
 import { startConversation } from '@/lib/services/chat'
-import { deleteListing, markListingSold, removeListingImage } from '@/lib/services/listings'
+import { deleteListing, markListingSold, removeListingImage, reopenListing } from '@/lib/services/listings'
 import { friendlyError } from '@/lib/errors'
 import { formatPrice, loginHref } from '@/lib/format'
 
@@ -24,6 +24,7 @@ export default function ProductActions({ listing, sellerName }) {
   const isOwner = !!user && listing.seller_id === user.id
   const noSeller = !listing.seller_id
   const unavailable = listing.status !== 'active'
+  const unavailableLabel = { sold: 'বিক্রি হয়ে গেছে', reserved: 'রিজার্ভড', hidden: 'পাওয়া যাচ্ছে না' }[listing.status]
 
   const requireLogin = () => router.push(loginHref(pathname))
 
@@ -74,6 +75,32 @@ export default function ProductActions({ listing, sellerName }) {
         <p className="font-semibold text-teal-950">এটি আপনার প্রোডাক্ট</p>
         <p className="mt-0.5 text-sm text-slate-500">ক্রেতাদের মেসেজ পাবেন মেসেজ ট্যাবে।</p>
         <div className="mt-4 flex flex-wrap gap-3">
+          {(listing.status === 'active' || listing.status === 'sold') && (
+            <Button href={`/product/${listing.id}/edit`} variant="dark">
+              <Icon name="edit" className="h-4 w-4" /> এডিট করুন
+            </Button>
+          )}
+          {listing.status === 'sold' && (
+            <Button
+              variant="soft"
+              loading={busy === 'reopen'}
+              onClick={async () => {
+                setBusy('reopen')
+                try {
+                  await reopenListing(listing.id)
+                  toast.success('প্রোডাক্ট আবার চালু হয়েছে।')
+                  router.refresh()
+                } catch (err) {
+                  toast.error(friendlyError(err))
+                } finally {
+                  setBusy(null)
+                }
+              }}
+            >
+              আবার চালু করুন
+            </Button>
+          )}
+          {listing.status === 'hidden' && <p className="text-sm text-rose-700">এই প্রোডাক্ট পর্যালোচনার জন্য লুকানো আছে। আমাদের টিম দেখছে।</p>}
           {listing.status === 'active' && (
             <Button variant="soft" onClick={sold} loading={busy === 'sold'}>
               <Icon name="check" className="h-4 w-4" /> বিক্রি হয়ে গেছে
@@ -118,7 +145,7 @@ export default function ProductActions({ listing, sellerName }) {
             onClick={() => (user ? setEscrowOpen(true) : requireLogin())}
           >
             <Icon name="shield" className="h-5 w-5" />
-            {unavailable ? (listing.status === 'sold' ? 'বিক্রি হয়ে গেছে' : 'রিজার্ভড') : 'Buy via Escrow'}
+            {unavailable ? unavailableLabel : 'Buy via Escrow'}
           </Button>
           <Button variant="outline" size="lg" className="flex-1" disabled={disabledAll} loading={busy === 'chat'} onClick={chat}>
             <Icon name="chat" className="h-5 w-5" /> Chat with Seller

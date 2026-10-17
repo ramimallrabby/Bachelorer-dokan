@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/components/auth/AuthProvider'
+import useWallet from '@/hooks/useWallet'
 import Button from '@/components/ui/Button'
 import Dialog from '@/components/ui/Dialog'
 import Icon from '@/components/ui/Icons'
@@ -22,6 +23,7 @@ import { formatDateTime, formatPrice } from '@/lib/format'
 
 export default function OrderPanel({ orderId }) {
   const { user } = useAuth()
+  const { balance } = useWallet(user?.id)
   const router = useRouter()
   const [order, setOrder] = useState(undefined) // undefined = loading, null = not found
   const [events, setEvents] = useState([])
@@ -112,7 +114,7 @@ export default function OrderPanel({ orderId }) {
       </div>
 
       {config?.mode === 'test' && (
-        <p className="mt-4 rounded-xl bg-amber-50 px-4 py-2.5 text-sm text-amber-900 ring-1 ring-amber-200">টেস্ট মোড: এই অর্ডারে আসল টাকা লেনদেন হচ্ছে না।</p>
+        <p className="mt-4 rounded-xl bg-amber-50 px-4 py-2.5 text-sm text-amber-900 ring-1 ring-amber-200">টেস্ট মোড: ওয়ালেটের টাকা খেলার টাকা, আসল লেনদেন হচ্ছে না।</p>
       )}
 
       <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
@@ -129,9 +131,15 @@ export default function OrderPanel({ orderId }) {
                 <>
                   {note('bg-amber-50 text-amber-900 ring-amber-200', 'পেমেন্ট সম্পন্ন হলে টাকা এসক্রো-তে জমা থাকবে এবং প্রোডাক্টটি আপনার জন্য রিজার্ভ হবে।')}
                   <div className="flex flex-wrap gap-3">
-                    <Button variant="primary" size="lg" loading={busy === 'pay'} onClick={() => run('pay', () => payForOrder(order.id), 'টাকা এসক্রো-তে জমা হয়েছে।')}>
-                      <Icon name="lock" className="h-5 w-5" /> {formatPrice(order.total)} জমা দিন
-                    </Button>
+                    {balance !== null && balance < Number(order.total) ? (
+                      <Button href="/wallet" variant="primary" size="lg">
+                        <Icon name="wallet" className="h-5 w-5" /> ব্যালেন্স কম: {formatPrice(Number(order.total) - balance)} যোগ করুন
+                      </Button>
+                    ) : (
+                      <Button variant="primary" size="lg" loading={busy === 'pay'} onClick={() => run('pay', () => payForOrder(order.id), 'টাকা এসক্রো-তে জমা হয়েছে।')}>
+                        <Icon name="lock" className="h-5 w-5" /> ওয়ালেট থেকে {formatPrice(order.total)} জমা দিন
+                      </Button>
+                    )}
                     <Button variant="soft" size="lg" onClick={() => setDialog('cancel')}>অর্ডার বাতিল</Button>
                   </div>
                 </>
@@ -176,10 +184,10 @@ export default function OrderPanel({ orderId }) {
                 </>
               ))}
 
-            {s === 'completed' && note('bg-emerald-50 text-emerald-900 ring-emerald-200', isBuyer ? 'লেনদেন সম্পন্ন। আপনার কেনাকাটার জন্য ধন্যবাদ!' : 'লেনদেন সম্পন্ন। টাকা আপনার জন্য ছাড়া হয়েছে।')}
+            {s === 'completed' && note('bg-emerald-50 text-emerald-900 ring-emerald-200', isBuyer ? 'লেনদেন সম্পন্ন। আপনার কেনাকাটার জন্য ধন্যবাদ!' : 'লেনদেন সম্পন্ন। টাকা আপনার ওয়ালেটে জমা হয়েছে। ওয়ালেট থেকে উত্তোলন করতে পারবেন।')}
             {s === 'disputed' && note('bg-rose-50 text-rose-900 ring-rose-200', `বিরোধ খোলা আছে। আমাদের টিম দুই পক্ষের সাথে কথা বলে সিদ্ধান্ত নেবে, তার আগে টাকা এসক্রো-তেই থাকবে।${order.dispute_reason ? ` কারণ: ${order.dispute_reason}` : ''}`)}
             {s === 'cancelled' && note('bg-slate-50 text-slate-700 ring-slate-200', 'অর্ডারটি বাতিল হয়েছে। কোনো টাকা কাটা হয়নি।')}
-            {s === 'refunded' && note('bg-slate-50 text-slate-700 ring-slate-200', 'অর্ডারটি বাতিল হয়েছে এবং টাকা ক্রেতাকে ফেরত দেওয়া হবে।')}
+            {s === 'refunded' && note('bg-slate-50 text-slate-700 ring-slate-200', isBuyer ? 'অর্ডারটি বাতিল হয়েছে এবং টাকা আপনার ওয়ালেটে ফেরত গেছে।' : 'অর্ডারটি বাতিল হয়েছে এবং টাকা ক্রেতাকে ফেরত দেওয়া হয়েছে।')}
 
             {canChat && (
               <Button variant="soft" loading={busy === 'chat'} onClick={openChat}>

@@ -3,10 +3,21 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '@/components/auth/AuthProvider'
 import { Avatar } from '@/components/ui/Media'
+import { useOnline } from '@/components/auth/LiveProvider'
 import Button from '@/components/ui/Button'
 import { EmptyState, ErrorState, Skeleton } from '@/components/ui/Feedback'
 import useConversations from '@/hooks/useConversations'
 import { timeAgo } from '@/lib/format'
+
+function OnlineAvatar({ person }) {
+  const online = useOnline(person?.id)
+  return (
+    <span className="relative shrink-0">
+      <Avatar name={person?.full_name} url={person?.avatar_url} className="h-12 w-12 text-base" />
+      {online && <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full bg-emerald-500 ring-2 ring-white" />}
+    </span>
+  )
+}
 
 export default function ConversationList() {
   const { user } = useAuth()
@@ -64,7 +75,7 @@ export default function ConversationList() {
                       active ? 'bg-teal-900/[0.07]' : 'hover:bg-teal-900/[0.04]'
                     }`}
                   >
-                    <Avatar name={other?.full_name} url={other?.avatar_url} className="h-12 w-12 text-base" />
+                    <OnlineAvatar person={other} />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline justify-between gap-2">
                         <p className={`truncate ${count ? 'font-bold' : 'font-semibold'} text-teal-950`}>{other?.full_name || 'ব্যবহারকারী'}</p>
