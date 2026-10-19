@@ -14,13 +14,20 @@ export default function Hero() {
     document.getElementById('results')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  const categoryQuickLinks = ['Books', 'Notes', 'Electronics', 'Stationery', 'Others']
+  // ক্যাটাগরির নাম এবং ভ্যালু অবজেক্ট আকারে দেওয়া হলো
+  const categoryQuickLinks = [
+    { name: 'Books', value: 'books' },
+    { name: 'Notes', value: 'notes' },
+    { name: 'Electronics', value: 'electronics' },
+    { name: 'Stationery', value: 'stationery' },
+    { name: 'Others', value: 'others' }
+  ]
 
   return (
     <section className="mb-16 sm:mb-20">
       {/* 
         Main Hero Area - 
-        আপনার অরিজিনাল aurora, grain, on-dark ক্লাসগুলো এখানে আগের মতোই রাখা হয়েছে 
+        আপনার অরিজিনাল aurora, grain, on-dark ক্লাসগুলো এখানে আগের মতোই রাখা হয়েছে 
       */}
       <div className="aurora grain on-dark relative overflow-hidden rounded-b-[36px] sm:rounded-b-[56px]">
         <div className="mx-auto flex max-w-4xl flex-col items-center px-4 pb-20 pt-14 text-center sm:px-6 sm:pb-28 sm:pt-20 lg:px-8">
@@ -80,21 +87,21 @@ export default function Hero() {
         </div>
       </div>
 
-      {/* Floating Category Buttons - overflow-hidden এর বাইরে এনে উপরে উঠিয়ে দেওয়া হয়েছে */}
+      {/* Floating Category Buttons - overflow-hidden এর বাইরে এনে উপরে উঠিয়ে দেওয়া হয়েছে */}
       <div className="relative z-10 -mt-6 flex w-full justify-center px-4 sm:-mt-7">
         <div className="flex w-full max-w-4xl gap-3 overflow-x-auto pb-4 pt-2 sm:justify-center sm:overflow-visible sm:pb-2">
           {categoryQuickLinks.map((cat, i) => (
             <button
-              key={cat}
+              key={cat.name}
               onClick={() => {
-                setQ(cat)
-                flush(cat)
+                setQ('') // সার্চ বক্সে লেখা থাকলে মুছে ফেলবে
+                update({ category: cat.value, q: '' }) // সঠিক ক্যাটাগরি ফিল্টার হিসেবে পাঠাবে
                 document.getElementById('results')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
               }}
               className="rise flex shrink-0 items-center justify-center whitespace-nowrap rounded-full border border-gray-200/80 bg-white px-6 py-3 text-sm font-semibold text-gray-700 shadow-xl transition-all hover:-translate-y-0.5 hover:border-emerald-300 hover:text-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
               style={{ '--d': `${400 + i * 50}ms` }}
             >
-              {cat}
+              {cat.name}
             </button>
           ))}
         </div>

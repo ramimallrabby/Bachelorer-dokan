@@ -115,14 +115,38 @@ function NavSearch() {
   const params = useSearchParams()
   const pathname = usePathname()
   const [q, setQ] = useState(params.get('q') ?? '')
-  useEffect(() => setQ(pathname === '/' ? params.get('q') ?? '' : ''), [params, pathname])
+  
+ useEffect(() => {
+    const timer = setTimeout(() => {
+      setQ(pathname === '/' ? params.get('q') ?? '' : '')
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [params, pathname])
 
   return (
     <form
       role="search"
       onSubmit={(e) => {
         e.preventDefault()
-        router.push(q.trim() ? `/?q=${encodeURIComponent(q.trim())}#results` : '/')
+        const val = q.trim()
+        let url = '/'
+        
+        // হোম পেইজে থাকলে আগের ফিল্টারগুলো (Category, Price ইত্যাদি) রেখে শুধু q আপডেট হবে
+        if (pathname === '/') {
+          const current = new URLSearchParams(Array.from(params.entries()))
+          if (val) {
+            current.set('q', val)
+          } else {
+            current.delete('q')
+          }
+          const search = current.toString()
+          url = search ? `/?${search}#results` : '/'
+        } else {
+          // অন্য পেইজ থেকে সার্চ করলে শুধু q নিয়ে হোম পেইজে যাবে
+          url = val ? `/?q=${encodeURIComponent(val)}#results` : '/'
+        }
+        
+        router.push(url)
       }}
       className="hidden min-w-0 max-w-md flex-1 md:block"
     >
@@ -148,8 +172,9 @@ export default function Navbar() {
 
   const [isMounted, setIsMounted] = useState(false)
 
-  useEffect(() => {
-    setIsMounted(true)
+ useEffect(() => {
+    const timer = setTimeout(() => setIsMounted(true), 0)
+    return () => clearTimeout(timer)
   }, [])
 
   if (pathname.startsWith('/admin')) return null

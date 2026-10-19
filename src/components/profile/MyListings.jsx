@@ -9,7 +9,7 @@ import Icon from '@/components/ui/Icons'
 import { EmptyState, ErrorState, Skeleton } from '@/components/ui/Feedback'
 import { SmartImage } from '@/components/ui/Media'
 import { StatusPill } from '@/components/ui/Pill'
-import { deleteListing, fetchMyListings, markListingSold, removeListingImage, reopenListing } from '@/lib/services/listings'
+import { deleteListing, fetchMyListings, markListingSold, reopenListing } from '@/lib/services/listings'
 import { friendlyError } from '@/lib/errors'
 import { formatPrice, timeAgo } from '@/lib/format'
 
@@ -28,10 +28,13 @@ export default function MyListings() {
   const [del, setDel] = useState(null)
 
   const load = useCallback(() => {
-    setError(null)
+    setTimeout(() => setError(null), 0)
     fetchMyListings(user.id).then(setItems).catch((e) => setError(friendlyError(e)))
   }, [user.id])
-  useEffect(load, [load])
+
+  useEffect(() => {
+    load()
+  }, [load])
 
   async function act(id, fn, ok) {
     setBusy(id)
@@ -126,8 +129,7 @@ export default function MyListings() {
                 del.id,
                 async () => {
                   await deleteListing(del.id)
-                  const path = del.image_url?.split('/product-images/')[1]
-                  if (path?.startsWith(`${user.id}/`)) removeListingImage(path)
+                  // অর্ডার হিস্ট্রির ছবি যেন ব্রোকেন না হয়, তাই স্টোরেজ থেকে ছবি ডিলিট করা বন্ধ করা হয়েছে
                 },
                 'প্রোডাক্ট ডিলিট করা হয়েছে।'
               )

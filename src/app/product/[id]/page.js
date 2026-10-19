@@ -1,6 +1,8 @@
 import { cache } from 'react'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { cookies } from 'next/headers'
+import { createServerClient } from '@supabase/ssr'
 import Icon from '@/components/ui/Icons'
 import { Avatar, SmartImage } from '@/components/ui/Media'
 import ProductActions from '@/components/product/ProductActions'
@@ -31,7 +33,39 @@ export async function generateMetadata({ params }) {
 
 export default async function ProductPage({ params }) {
   const { id } = await params
-  const listing = await getListing(id) // real errors bubble up to app/error.js
+  let listing = await getListing(id) // real errors bubble up to app/error.js
+
+  // --- CRITICAL SSR AUTH FIX START ---
+  // নরমাল ফেচে প্রোডাক্ট না পেলে (যেমন hidden প্রোডাক্টের ক্ষেত্রে), 
+  // ইউজারের কুকি ব্যবহার করে সার্ভার-সাইড থেকে অথেনটিকেটেড রিকোয়েস্ট পাঠানো হচ্ছে।
+  if (!listing) {
+    try {
+      const cookieStore = await cookies()
+      const supabase = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+        {
+          cookies: {
+            get(name) {
+              return cookieStore.get(name)?.value
+            },
+          },
+        }
+      )
+      
+      const { data } = await supabase
+        .from('listings')
+        .select('*, seller:profiles(*)')
+        .eq('id', id)
+        .single()
+        
+      listing = data
+    } catch (error) {
+      // কোনো সমস্যা হলে ইগনোর করবে এবং নিচে notFound() এ চলে যাবে
+    }
+  }
+  // --- CRITICAL SSR AUTH FIX END ---
+
   if (!listing) notFound()
 
   const category = labelOf(CATEGORIES, listing.category)

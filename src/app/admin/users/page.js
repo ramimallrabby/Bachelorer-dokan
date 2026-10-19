@@ -13,19 +13,39 @@ import { friendlyError } from '@/lib/errors'
 import useDebounce from '@/hooks/useDebounce'
 import { formatDate } from '@/lib/format'
 
+const PAGE_SIZE = 30
+
 export default function AdminUsers() {
   const [q, setQ] = useState('')
   const dq = useDebounce(q, 300)
+  const [page, setPage] = useState(0) // পেজিনেশনের জন্য নতুন স্টেট
   const [rows, setRows] = useState(null)
   const [dlg, setDlg] = useState(null)
 
-  const load = useCallback(() => adminUsers(dq).then(setRows).catch((e) => toast.error(friendlyError(e))), [dq])
+ // নতুন কিছু সার্চ করলে পেজ নাম্বার রিসেট হয়ে প্রথম পেজে চলে যাবে
   useEffect(() => {
-    setRows(null)
-    load()
+    const timer = setTimeout(() => setPage(0), 0)
+    return () => clearTimeout(timer)
+  }, [dq])
+
+  const load = useCallback(() => {
+    // adminUsers ফাংশনে offset (page * 30) পাঠানো হচ্ছে
+    adminUsers(dq, page * PAGE_SIZE)
+      .then(setRows)
+      .catch((e) => toast.error(friendlyError(e)))
+  }, [dq, page])
+
+  useEffect(() => {
+    // সিঙ্ক্রোনাস রেন্ডার এড়াতে setTimeout ব্যবহার করা হলো
+    const timer = setTimeout(() => {
+      setRows(null)
+      load()
+    }, 0)
+    return () => clearTimeout(timer)
   }, [load])
 
   const total = rows?.[0]?.total_count ?? 0
+  const totalPages = Math.ceil(total / PAGE_SIZE)
 
   return (
     <>
@@ -41,36 +61,55 @@ export default function AdminUsers() {
         ) : rows.length === 0 ? (
           <Empty icon="users">কেউ পাওয়া যায়নি</Empty>
         ) : (
-          <ul className="divide-y divide-teal-900/[0.06]">
-            {rows.map((u) => (
-              <li key={u.id} className="flex flex-wrap items-center gap-4 px-5 py-4">
-                <Avatar name={u.full_name || u.email} className="h-11 w-11" />
-                <div className="min-w-0 flex-1 basis-52">
-                  <p className="flex flex-wrap items-center gap-2 truncate font-semibold text-teal-950">
-                    <Link href={`/u/${u.id}`} target="_blank" className="hover:underline">{u.full_name || '(নাম নেই)'}</Link>
-                    {u.is_admin && <StatusPill tone="violet">অ্যাডমিন</StatusPill>}
-                    {u.is_banned && <StatusPill tone="rose">ব্যান</StatusPill>}
-                  </p>
-                  <p className="truncate text-sm text-slate-500">{u.email} · যোগ দিয়েছেন {formatDate(u.created_at)}</p>
-                </div>
-                <div className="flex gap-5 text-center text-xs text-slate-500">
-                  <span><b className="block text-base text-teal-950">{u.listings}</b>প্রোডাক্ট</span>
-                  <span><b className="block text-base text-teal-950">{u.orders}</b>অর্ডার</span>
-                  <span><Money className="block text-base text-teal-950">{u.balance}</Money>ওয়ালেট</span>
-                </div>
-                {!u.is_admin && (
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={() => setDlg({ u, kind: 'adjust' })}><Icon name="wallet" className="h-4 w-4" /></Button>
-                    {u.is_banned ? (
-                      <Button size="sm" variant="soft" onClick={() => setDlg({ u, kind: 'unban' })}>আনব্যান</Button>
-                    ) : (
-                      <Button size="sm" variant="outline" className="text-rose-700" onClick={() => setDlg({ u, kind: 'ban' })}><Icon name="ban" className="h-4 w-4" /> ব্যান</Button>
-                    )}
+          <>
+            <ul className="divide-y divide-teal-900/[0.06]">
+              {rows.map((u) => (
+                <li key={u.id} className="flex flex-wrap items-center gap-4 px-5 py-4">
+                  <Avatar name={u.full_name || u.email} className="h-11 w-11" />
+                  <div className="min-w-0 flex-1 basis-52">
+                    <p className="flex flex-wrap items-center gap-2 truncate font-semibold text-teal-950">
+                      <Link href={`/u/${u.id}`} target="_blank" className="hover:underline">{u.full_name || '(নাম নেই)'}</Link>
+                      {u.is_admin && <StatusPill tone="violet">অ্যাডমিন</StatusPill>}
+                      {u.is_banned && <StatusPill tone="rose">ব্যান</StatusPill>}
+                    </p>
+                    <p className="truncate text-sm text-slate-500">{u.email} · যোগ দিয়েছেন {formatDate(u.created_at)}</p>
                   </div>
-                )}
-              </li>
-            ))}
-          </ul>
+                  <div className="flex gap-5 text-center text-xs text-slate-500">
+                    <span><b className="block text-base text-teal-950">{u.listings}</b>প্রোডাক্ট</span>
+                    <span><b className="block text-base text-teal-950">{u.orders}</b>অর্ডার</span>
+                    <span><Money className="block text-base text-teal-950">{u.balance}</Money>ওয়ালেট</span>
+                  </div>
+                  {!u.is_admin && (
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={() => setDlg({ u, kind: 'adjust' })}><Icon name="wallet" className="h-4 w-4" /></Button>
+                      {u.is_banned ? (
+                        <Button size="sm" variant="soft" onClick={() => setDlg({ u, kind: 'unban' })}>আনব্যান</Button>
+                      ) : (
+                        <Button size="sm" variant="outline" className="text-rose-700" onClick={() => setDlg({ u, kind: 'ban' })}><Icon name="ban" className="h-4 w-4" /> ব্যান</Button>
+                      )}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+
+            {/* পেজিনেশন কন্ট্রোলস */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between border-t border-teal-900/10 bg-teal-50/30 px-5 py-3.5">
+                <p className="text-sm font-medium text-slate-500">
+                  পৃষ্ঠা <span className="text-teal-900">{page + 1}</span> / {totalPages}
+                </p>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
+                    আগের পৃষ্ঠা
+                  </Button>
+                  <Button size="sm" variant="outline" disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)}>
+                    পরের পৃষ্ঠা
+                  </Button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </Card>
 

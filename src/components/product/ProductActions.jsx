@@ -8,7 +8,7 @@ import Dialog from '@/components/ui/Dialog'
 import Icon from '@/components/ui/Icons'
 import EscrowDialog from '@/components/escrow/EscrowDialog'
 import { startConversation } from '@/lib/services/chat'
-import { deleteListing, markListingSold, removeListingImage, reopenListing } from '@/lib/services/listings'
+import { deleteListing, markListingSold, reopenListing } from '@/lib/services/listings'
 import { friendlyError } from '@/lib/errors'
 import { formatPrice, loginHref } from '@/lib/format'
 
@@ -57,8 +57,7 @@ export default function ProductActions({ listing, sellerName }) {
     setBusy('delete')
     try {
       await deleteListing(listing.id)
-      const path = listing.image_url?.split('/product-images/')[1]
-      if (path?.startsWith(`${user.id}/`)) removeListingImage(path) // best effort cleanup
+      // অর্ডার হিস্ট্রির ছবি যেন ব্রোকেন না হয়, তাই স্টোরেজ থেকে ছবি ডিলিট করা বন্ধ করা হয়েছে
       toast.success('প্রোডাক্ট ডিলিট করা হয়েছে।')
       router.replace('/')
     } catch (err) {
@@ -111,7 +110,7 @@ export default function ProductActions({ listing, sellerName }) {
               <Icon name="trash" className="h-4 w-4" /> ডিলিট করুন
             </Button>
           )}
-          {listing.status === 'reserved' && <p className="text-sm text-amber-800">চালু এসক্রো অর্ডার আছে। অর্ডার পেজ থেকে এগিয়ে যান।</p>}
+          {listing.status === 'reserved' && <p className="text-sm text-amber-800">চালু এসক্রো অর্ডার আছে। অর্ডার পেজ থেকে এগিয়ে যান。</p>}
         </div>
 
         <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)} title="প্রোডাক্টটি ডিলিট করবেন?" width="max-w-md">

@@ -12,7 +12,8 @@ export function getEscrowConfig() {
   configPromise ??= supabase
     .from('app_settings')
     .select('key, value')
-    .then(({ data }) => {
+    .then(({ data, error }) => {
+      if (error) throw error
       const s = Object.fromEntries((data ?? []).map((r) => [r.key, r.value]))
       return {
         mode: s.payments_mode ?? 'test',
@@ -21,7 +22,16 @@ export function getEscrowConfig() {
         autoReleaseHours: Number(s.auto_release_hours ?? 72),
       }
     })
+    .catch((err) => {
+      configPromise = null // এরর হলে ক্যাশ রিসেট করে দিবে
+      throw err
+    })
   return configPromise
+}
+
+// অ্যাডমিন প্যানেল থেকে সেটিংস চেঞ্জ করার পর ক্যাশ ক্লিয়ার করার জন্য
+export function clearEscrowConfigCache() {
+  configPromise = null
 }
 
 export const calcFee = (price, feeBps) => Math.round((Number(price) * feeBps) / 100) / 100
@@ -38,7 +48,7 @@ export const createOrder = (listingId, note) =>
 /** Pays from the buyer's wallet. All-or-nothing in the database: no half-paid orders. */
 export async function payForOrder(orderId) {
   const result = await rpc('pay_order_with_wallet', { p_order_id: orderId })
-  if (result !== 'funded') throw new Error(result)
+  if (result !== 'funded' && result !== 'success') throw new Error(result)
 }
 
 export const markDelivered = (orderId) => rpc('mark_delivered', { p_order_id: orderId })

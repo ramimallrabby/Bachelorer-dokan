@@ -18,10 +18,20 @@ export function LiveProvider({ children }) {
 
   useEffect(() => {
     if (!userId) {
-      setOnline(new Set())
-      return
+      // সিঙ্ক্রোনাস রেন্ডার (ESLint Error) এড়াতে setTimeout ব্যবহার করা হলো
+      const timer = setTimeout(() => setOnline(new Set()), 0)
+      return () => clearTimeout(timer)
     }
-    const channel = supabase.channel('presence:dokan', { config: { presence: { key: userId } } })
+
+    // --- BUG FIX: PRIVACY LEAK ---
+    // গ্লোবাল প্রেজেন্সকে private: true করে সিকিউর করা হয়েছে
+    const channel = supabase.channel('presence:dokan', { 
+      config: { 
+        private: true,
+        presence: { key: userId } 
+      } 
+    })
+    
     channel
       .on('presence', { event: 'sync' }, () => setOnline(new Set(Object.keys(channel.presenceState()))))
       .subscribe((status) => {
@@ -30,6 +40,7 @@ export function LiveProvider({ children }) {
 
     const deliver = () => document.visibilityState === 'visible' && markAllDelivered().then(() => {}, () => {})
     deliver()
+    
     const incoming = supabase
       .channel(`delivery:${userId}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, ({ new: m }) => {

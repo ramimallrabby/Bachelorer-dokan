@@ -14,14 +14,12 @@ import { formatDate, formatPrice, formatTime, isSameDay, timeAgo } from '@/lib/f
 
 const PAGE = 40
 
-// Merge by id so realtime echoes, refetches and history pages can never create duplicates.
 function merge(prev, incoming) {
   const map = new Map(prev.map((m) => [m.id, m]))
   incoming.forEach((m) => map.set(m.id, m))
   return [...map.values()].sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
 }
 
-// Sent = one grey tick, delivered = two grey ticks, seen = two blue ticks. Clock while still sending.
 function Ticks({ m }) {
   if (m.pending) return <Icon name="clock" className="ml-1 inline h-3 w-3 translate-y-[1px] text-white/60" strokeWidth={2.2} />
   if (m.read_at)
@@ -33,10 +31,10 @@ function Ticks({ m }) {
 
 export default function ChatThread({ conversationId }) {
   const { user } = useAuth()
-  const [conv, setConv] = useState(undefined) // undefined = loading, null = not found / no access
+  const [conv, setConv] = useState(undefined)
   const [loadError, setLoadError] = useState(null)
   const [messages, setMessages] = useState([])
-  const [pending, setPending] = useState([]) // optimistic messages not yet confirmed by the server
+  const [pending, setPending] = useState([])
   const [hasMore, setHasMore] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [draft, setDraft] = useState('')
@@ -58,14 +56,16 @@ export default function ChatThread({ conversationId }) {
     return latest
   }, [conversationId])
 
-  // Initial load.
   useEffect(() => {
     let alive = true
-    setConv(undefined)
-    setLoadError(null)
-    setMessages([])
-    setPending([])
-    stick.current = true
+    const timer = setTimeout(() => {
+      setConv(undefined)
+      setLoadError(null)
+      setMessages([])
+      setPending([])
+      stick.current = true
+    }, 0)
+
     ;(async () => {
       try {
         const [c, latest] = await Promise.all([fetchConversation(conversationId), fetchMessages(conversationId, { limit: PAGE })])
@@ -81,12 +81,13 @@ export default function ChatThread({ conversationId }) {
         toast.error(message, { id: 'chat-load' })
       }
     })()
+
     return () => {
       alive = false
+      clearTimeout(timer)
     }
   }, [conversationId])
 
-  // Realtime: new messages, tick updates (delivered/seen) and the typing indicator.
   useEffect(() => {
     if (!conv) return
     const markRead = () => document.visibilityState === 'visible' && markConversationRead(conversationId)
@@ -97,13 +98,7 @@ export default function ChatThread({ conversationId }) {
         { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` },
         ({ new: m }) => {
           setMessages((prev) => merge(prev, [m]))
-          if (m.sender_id === user.id) {
-            // our own message echoed back: drop the matching optimistic bubble
-            setPending((p) => {
-              const i = p.findIndex((x) => x.body === m.body)
-              return i < 0 ? p : p.filter((_, j) => j !== i)
-            })
-          } else {
+          if (m.sender_id !== user.id) {
             setTyping(false)
             markRead()
           }
@@ -121,7 +116,6 @@ export default function ChatThread({ conversationId }) {
         typingTimer.current = setTimeout(() => setTyping(false), 3500)
       })
       .subscribe((status) => {
-        // (Re)connected: fetch anything we missed while offline or while the tab slept.
         if (status === 'SUBSCRIBED') syncLatest().catch(() => {})
         if (status === 'CHANNEL_ERROR') toast.error('লাইভ সংযোগে সমস্যা। নতুন মেসেজ দেখতে পেজ রিফ্রেশ করুন।', { id: 'rt-error' })
       })
@@ -141,7 +135,6 @@ export default function ChatThread({ conversationId }) {
     }
   }, [conv, conversationId, user.id, syncLatest])
 
-  // Keep the view pinned to the newest message, unless the user scrolled up to read history.
   useLayoutEffect(() => {
     const el = scroller.current
     if (el && stick.current) el.scrollTop = el.scrollHeight
@@ -162,7 +155,7 @@ export default function ChatThread({ conversationId }) {
       setHasMore(older.length === PAGE)
       stick.current = false
       setMessages((prev) => merge(prev, older))
-      requestAnimationFrame(() => (el.scrollTop = el.scrollHeight - before)) // keep reading position
+      requestAnimationFrame(() => (el.scrollTop = el.scrollHeight - before))
     } catch (err) {
       toast.error(friendlyError(err))
     } finally {
@@ -183,14 +176,13 @@ export default function ChatThread({ conversationId }) {
       setMessages((prev) => merge(prev, [saved]))
     } catch (err) {
       toast.error(friendlyError(err, 'মেসেজ পাঠানো যায়নি। আবার চেষ্টা করুন।'))
-      setDraft(body) // give the text back instead of losing it
+      setDraft(body)
     } finally {
       setPending((p) => p.filter((x) => x.id !== tempId))
     }
   }
 
   const onKeyDown = (e) => {
-    // isComposing: Bangla phonetic keyboards use Enter to commit a word, not to send.
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault()
       send()
@@ -209,18 +201,10 @@ export default function ChatThread({ conversationId }) {
   }
 
   if (loadError && conv === undefined) {
-    return (
-      <div className="p-6">
-        <ErrorState message={loadError} />
-      </div>
-    )
+    return <div className="p-6"><ErrorState message={loadError} /></div>
   }
   if (conv === undefined) {
-    return (
-      <div className="flex h-full items-center justify-center text-teal-800">
-        <Spinner className="h-7 w-7" />
-      </div>
-    )
+    return <div className="flex h-full items-center justify-center text-teal-800"><Spinner className="h-7 w-7" /></div>
   }
   if (conv === null) {
     return (
@@ -232,7 +216,9 @@ export default function ChatThread({ conversationId }) {
     )
   }
 
-  const all = [...messages, ...pending.map((p) => ({ ...p, sender_id: user.id, pending: true }))]
+  const all = [...messages, ...pending.map((p) => ({ ...p, sender_id: user.id, pending: true }))].sort(
+    (a, b) => new Date(a.created_at) - new Date(b.created_at)
+  )
 
   return (
     <div className="flex h-full min-h-0 flex-col">
