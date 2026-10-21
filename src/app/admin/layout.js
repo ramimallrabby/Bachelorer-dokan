@@ -17,6 +17,7 @@ const NAV = [
   { href: '/admin/reports', label: 'রিপোর্ট', icon: 'flag', badge: 'reports_open' },
   { href: '/admin/orders', label: 'অর্ডার ও বিরোধ', icon: 'receipt', badge: 'orders_disputed' },
   { href: '/admin/payments', label: 'পেমেন্ট', icon: 'wallet', badge: ['deposits_pending', 'withdrawals_pending'] },
+  { href: '/admin/support', label: 'সাপোর্ট টিকিট', icon: 'chat', badge: 'support_pending' }, // নতুন সাপোর্ট মেন্যু ও কাউন্টার যোগ করা হলো
   { href: '/admin/listings', label: 'প্রোডাক্ট', icon: 'tag' },
   { href: '/admin/users', label: 'ব্যবহারকারী', icon: 'users' },
   { href: '/admin/settings', label: 'সেটিংস', icon: 'settings' },
@@ -28,22 +29,43 @@ function Shell({ children }) {
   const pathname = usePathname()
   const [stats, setStats] = useState(null)
 
-  const refresh = useCallback(() => adminStats().then(setStats).catch(() => {}), [])
+  const refresh = useCallback(async () => {
+    try {
+      const baseStats = await adminStats().catch(() => ({}))
+      // সাপোর্ট টিকিটের পেন্ডিং সংখ্যা আলাদাভাবে ফেচ করে যোগ করা হচ্ছে
+      const { count } = await supabase
+        .from('support_tickets')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending')
+      
+      setStats({ ...baseStats, support_pending: count ?? 0 })
+    } catch (e) {
+      setStats({})
+    }
+  }, [])
+
   useEffect(() => {
-    refresh()
-    // Any new report / dispute / payment request refreshes the sidebar counters instantly.
+    const timer = setTimeout(() => refresh(), 0)
+    // Any new report / dispute / payment request / support ticket refreshes the sidebar counters instantly.
     const ch = supabase
       .channel('admin-counters')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'reports' }, refresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, refresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'deposit_requests' }, refresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'withdrawal_requests' }, refresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'support_tickets' }, refresh)
       .subscribe()
-    return () => supabase.removeChannel(ch)
+    return () => {
+      clearTimeout(timer)
+      supabase.removeChannel(ch)
+    }
+  
   }, [refresh])
 
   const count = (b) => (!b ? 0 : (Array.isArray(b) ? b : [b]).reduce((a, k) => a + Number(stats?.[k] || 0), 0))
   const active = (n) => (n.exact ? pathname === n.href : pathname.startsWith(n.href))
+
+  const totalAttentionCount = count(['reports_open', 'orders_disputed', 'deposits_pending', 'withdrawals_pending', 'support_pending'])
 
   return (
     <div className="min-h-screen bg-[#eef3f2] lg:grid lg:grid-cols-[264px_minmax(0,1fr)]">
@@ -87,8 +109,8 @@ function Shell({ children }) {
           <div className="flex h-16 items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
             <Link href="/admin" className="font-display text-lg font-extrabold text-teal-950 lg:hidden">Dokan Admin</Link>
             <p className="hidden text-sm text-slate-500 lg:block">
-              {stats && count(['reports_open', 'orders_disputed', 'deposits_pending', 'withdrawals_pending']) > 0
-                ? `${count(['reports_open', 'orders_disputed', 'deposits_pending', 'withdrawals_pending'])}টি বিষয় আপনার মনোযোগের অপেক্ষায়`
+              {stats && totalAttentionCount > 0
+                ? `${totalAttentionCount}টি বিষয় আপনার মনোযোগের অপেক্ষায়`
                 : 'সবকিছু নিয়ন্ত্রণে আছে ✓'}
             </p>
             <div className="flex items-center gap-2">

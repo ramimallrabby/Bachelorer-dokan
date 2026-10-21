@@ -2,7 +2,8 @@ import { supabase } from '@/lib/supabase'
 import { PAGE_SIZE } from '@/lib/constants'
 
 // Cards don't need `description`, so we don't download it for 12 rows at a time.
-const CARD_COLUMNS = 'id, title, price, location, image_url, category, condition, status, created_at, seller_id'
+// --- UPDATE: image_url এর বদলে image_urls (একাধিক ছবি) ব্যবহার করা হচ্ছে ---
+const CARD_COLUMNS = 'id, title, price, location, image_urls, category, condition, status, created_at, seller_id'
 
 // PostgREST's or() treats , ( ) as syntax and ilike treats % _ as wildcards: strip them from user text.
 const clean = (s = '') => s.replace(/[,()%_*\\"']/g, ' ').replace(/\s+/g, ' ').trim()
@@ -71,7 +72,11 @@ export async function uploadListingImage(userId, blob) {
   return { path, url: data.publicUrl }
 }
 
-export const removeListingImage = (path) => supabase.storage.from('product-images').remove([path])
+// --- UPDATE: একাধিক ছবি ডিলিট করার অপশন যোগ করা হলো ---
+export const removeListingImages = (paths) => {
+  if (!paths || paths.length === 0) return
+  return supabase.storage.from('product-images').remove(paths)
+}
 
 export async function createListing(values) {
   const { data, error } = await supabase.from('listings').insert(values).select('id').single()
@@ -97,7 +102,7 @@ export async function updateListing(id, values) {
 export async function fetchMyListings(userId) {
   const { data, error } = await supabase
     .from('listings')
-    .select('id, title, price, image_url, status, category, views, created_at, hidden_reason')
+    .select('id, title, price, image_urls, status, category, views, created_at, hidden_reason') // UPDATE
     .eq('seller_id', userId)
     .order('created_at', { ascending: false })
   if (error) throw error
@@ -107,7 +112,7 @@ export async function fetchMyListings(userId) {
 export async function fetchListingsBySeller(sellerId) {
   const { data, error } = await supabase
     .from('listings')
-    .select('id, title, price, location, image_url, category, condition, status, created_at, seller_id')
+    .select('id, title, price, location, image_urls, category, condition, status, created_at, seller_id') // UPDATE
     .eq('seller_id', sellerId)
     .in('status', ['active', 'reserved', 'sold'])
     .order('created_at', { ascending: false })

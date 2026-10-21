@@ -39,10 +39,11 @@ export default function Button({
       </Link>
     )
   }
-  return (
+ return (
     <button type={type} className={cls} disabled={disabled || loading} aria-busy={loading || undefined} {...rest}>
       {loading && <Spinner className="h-4 w-4" />}
-      {children}
+      <span>{children}</span>
     </button>
   )
+  
 }

@@ -9,7 +9,7 @@ import { Chip, Field, Input, Select, Textarea } from '@/components/ui/Form'
 import { compressImage } from '@/lib/image'
 import { friendlyError } from '@/lib/errors'
 import { CATEGORIES, CONDITIONS, MAX_IMAGE_MB } from '@/lib/constants'
-import { createListing, fetchLocations, removeListingImage, updateListing, uploadListingImage } from '@/lib/services/listings'
+import { createListing, fetchLocations, removeListingImages, updateListing, uploadListingImage } from '@/lib/services/listings'
 
 const EMPTY = { title: '', category: '', condition: 'good', price: '', location: '', description: '' }
 
@@ -23,7 +23,6 @@ function validate(v) {
   return e
 }
 
-// `listing` set = edit mode (seller changes their own post). Unset = create mode.
 export default function ListingForm({ listing = null }) {
   const editing = !!listing
   const { user } = useAuth()
@@ -42,142 +41,246 @@ export default function ListingForm({ listing = null }) {
         }
       : EMPTY
   )
-  const [existingUrl, setExistingUrl] = useState(listing?.image_url ?? null)
+
+  // --- MULTIPLE IMAGES STATE ---
+  // ডাটাবেস আপডেট হওয়ার আগে image_url ছিল, এখন image_urls (Array)
+  const initialUrls = listing?.image_urls?.length ? listing.image_urls : (listing?.image_url ? [listing.image_url] : [])
+  const [existingUrls, setExistingUrls] = useState(initialUrls)
+  const [newFiles, setNewFiles] = useState([]) // Array of { id, file, preview }
+  const [deletedUrls, setDeletedUrls] = useState([]) // ডিলিট করা পুরনো ছবির লিস্ট (পরে স্টোরেজ থেকে মুছতে)
+  const [primaryId, setPrimaryId] = useState(initialUrls[0] || null) // Front ছবির ID বা URL
+
   const [errors, setErrors] = useState({})
-  const [file, setFile] = useState(null)
-  const [preview, setPreview] = useState(null)
-  const shownImage = preview || existingUrl
   const [dragging, setDragging] = useState(false)
-  const [step, setStep] = useState(null) // null | progress label while submitting
+  const [step, setStep] = useState(null)
   const [locations, setLocations] = useState([])
 
   useEffect(() => {
     fetchLocations().then(setLocations).catch(() => {})
   }, [])
-  useEffect(() => () => preview && URL.revokeObjectURL(preview), [preview])
+
+  // মেমরি লিক রোধ করতে আনমাউন্ট হওয়ার সময় URL.revokeObjectURL কল করা
+  useEffect(() => {
+    return () => newFiles.forEach(nf => URL.revokeObjectURL(nf.preview))
+  }, [newFiles])
 
   const set = (key) => (e) => setValues((v) => ({ ...v, [key]: e.target.value }))
 
-  function pickFile(f) {
-    if (!f) return
-    if (!f.type.startsWith('image/')) return toast.error('শুধু ছবি (JPG, PNG, WebP) আপলোড করা যাবে।')
-    if (f.size > MAX_IMAGE_MB * 1024 * 1024) return toast.error(`ছবির সাইজ ${MAX_IMAGE_MB} MB এর কম হতে হবে।`)
-    setFile(f)
-    setPreview(URL.createObjectURL(f))
+  function pickFiles(filesList) {
+    if (!filesList || filesList.length === 0) return
+    const arr = Array.from(filesList)
+    const currentTotal = existingUrls.length + newFiles.length
+
+    if (currentTotal + arr.length > 5) {
+      return toast.error('সর্বোচ্চ ৫টি ছবি আপলোড করা যাবে।')
+    }
+
+    const validFiles = []
+    for (const f of arr) {
+      if (!f.type.startsWith('image/')) {
+        toast.error(`${f.name} কোনো ছবি নয়।`)
+        continue
+      }
+      if (f.size > MAX_IMAGE_MB * 1024 * 1024) {
+        toast.error(`${f.name} এর সাইজ ${MAX_IMAGE_MB} MB এর বেশি।`)
+        continue
+      }
+      validFiles.push({ id: crypto.randomUUID(), file: f, preview: URL.createObjectURL(f) })
+    }
+
+    setNewFiles((prev) => {
+      const updated = [...prev, ...validFiles]
+      // যদি আগে কোনো প্রাইমারি ছবি না থাকে, তবে প্রথমটিকে প্রাইমারি বানাবে
+      if (!primaryId && updated.length > 0 && existingUrls.length === 0) {
+        setPrimaryId(updated[0].id)
+      }
+      return updated
+    })
+  }
+
+  function removeImage(id, isExisting) {
+    if (isExisting) {
+      setExistingUrls(prev => prev.filter(url => url !== id))
+      setDeletedUrls(prev => [...prev, id])
+    } else {
+      setNewFiles(prev => prev.filter(nf => nf.id !== id))
+    }
+    // যদি প্রাইমারি ছবি ডিলিট হয়ে যায়, অন্য একটিকে প্রাইমারি করবে
+    if (primaryId === id) {
+      const remainingExisting = existingUrls.filter(url => url !== id)
+      const remainingNew = newFiles.filter(nf => nf.id !== id)
+      setPrimaryId(remainingExisting[0] || remainingNew[0]?.id || null)
+    }
   }
 
   async function onSubmit(ev) {
     ev.preventDefault()
     const found = validate(values)
     setErrors(found)
+    
+    if (existingUrls.length === 0 && newFiles.length === 0) {
+      return toast.error('অন্তত একটি ছবি আপলোড করতে হবে।')
+    }
     if (Object.keys(found).length) return toast.error('লাল চিহ্নিত ঘরগুলো ঠিক করে আবার চেষ্টা করুন।')
 
-    let uploaded = null
+    const maxAttempts = 3
+    let attempts = 0
+    let uploadedResults = [] // সফলভাবে আপলোড হওয়া নতুন ছবিগুলো
+    let blobsToUpload = []
+
     try {
-      if (file) {
-        setStep('ছবি ছোট করা হচ্ছে...')
-        const blob = await compressImage(file)
-        setStep('ছবি আপলোড হচ্ছে...')
-        uploaded = await uploadListingImage(user.id, blob)
+      if (newFiles.length > 0) {
+        setStep('ছবি প্রস্তুত করা হচ্ছে...')
+        for (const nf of newFiles) {
+          blobsToUpload.push({ id: nf.id, blob: await compressImage(nf.file), uploadedData: null })
+        }
       }
-      setStep('প্রোডাক্ট সেভ হচ্ছে...')
-      if (editing) {
-        await updateListing(listing.id, {
-          title: values.title.trim(),
-          category: values.category,
-          condition: values.condition,
-          price: Math.round(Number(values.price)),
-          location: values.location.trim(),
-          description: values.description.trim(),
-          image_url: uploaded ? uploaded.url : existingUrl,
-        })
-        // best-effort: delete the replaced / removed photo
-        const oldPath = listing.image_url?.split('/product-images/')[1]
-        if (oldPath && (uploaded || !existingUrl) && oldPath.startsWith(`${user.id}/`)) removeListingImage(oldPath)
-        toast.success('পরিবর্তন সেভ হয়েছে!')
-        router.push(`/product/${listing.id}`)
-        return
+
+      while (attempts < maxAttempts) {
+        attempts++
+        try {
+          // নতুন ছবিগুলো আপলোড করা
+          for (let i = 0; i < blobsToUpload.length; i++) {
+            if (!blobsToUpload[i].uploadedData) {
+              setStep(attempts > 1 ? `আবার চেষ্টা করা হচ্ছে (${attempts}/${maxAttempts})...` : `ছবি আপলোড হচ্ছে (${i + 1}/${blobsToUpload.length})...`)
+              const up = await uploadListingImage(user.id, blobsToUpload[i].blob)
+              blobsToUpload[i].uploadedData = up
+              uploadedResults.push({ id: blobsToUpload[i].id, url: up.url, path: up.path })
+            }
+          }
+
+          setStep('প্রোডাক্ট সেভ হচ্ছে...')
+          
+          // সব URL (পুরনো + নতুন) একত্রিত করা
+          let finalUrls = [...existingUrls, ...uploadedResults.map(u => u.url)]
+          
+          // ফ্রন্ট (প্রাইমারি) ছবিটিকে Array-এর প্রথম ইনডেক্সে (0) নিয়ে আসা
+          let frontUrl = null
+          if (existingUrls.includes(primaryId)) frontUrl = primaryId
+          else {
+            const foundNew = uploadedResults.find(u => u.id === primaryId)
+            if (foundNew) frontUrl = foundNew.url
+          }
+
+          if (frontUrl && finalUrls.includes(frontUrl)) {
+            finalUrls = [frontUrl, ...finalUrls.filter(u => u !== frontUrl)]
+          }
+
+          const dbPayload = {
+            title: values.title.trim(),
+            category: values.category,
+            condition: values.condition,
+            price: Math.round(Number(values.price)),
+            location: values.location.trim(),
+            description: values.description.trim(),
+            image_urls: finalUrls,
+            image_url: finalUrls[0] || null, // Backward compatibility
+          }
+
+          if (editing) {
+            await updateListing(listing.id, dbPayload)
+            toast.success('পরিবর্তন সেভ হয়েছে!')
+            router.push(`/product/${listing.id}`)
+          } else {
+            const { id } = await createListing({ ...dbPayload, seller_id: user.id })
+            toast.success('প্রোডাক্ট যোগ করা হয়েছে!')
+            router.push(`/product/${id}`)
+          }
+
+          // স্টোরেজ থেকে ডিলিট করা ছবিগুলো রিমুভ করা (Best effort)
+          if (deletedUrls.length > 0) {
+            const pathsToRemove = deletedUrls.map(url => url.split('/product-images/')[1]).filter(path => path?.startsWith(`${user.id}/`))
+            if (pathsToRemove.length > 0) removeListingImages(pathsToRemove)
+          }
+          return
+
+        } catch (err) {
+          if (attempts >= maxAttempts) throw err
+          await new Promise((res) => setTimeout(res, 1500))
+        }
       }
-      const { id } = await createListing({
-        title: values.title.trim(),
-        category: values.category,
-        condition: values.condition,
-        price: Math.round(Number(values.price)),
-        location: values.location.trim(),
-        description: values.description.trim(),
-        image_url: uploaded?.url ?? null,
-        seller_id: user.id, // links the product to its seller
-      })
-      toast.success('প্রোডাক্ট যোগ করা হয়েছে!')
-      router.push(`/product/${id}`)
     } catch (err) {
-      if (uploaded) removeListingImage(uploaded.path) // don't leave an orphaned photo behind
-      toast.error(friendlyError(err))
+      // যদি এরর হয়, তবে এইমাত্র আপলোড করা নতুন ছবিগুলো স্টোরেজ থেকে মুছে ফেলবে (Orphaned images)
+      const pathsToClean = uploadedResults.map(u => u.path)
+      if (pathsToClean.length > 0) removeListingImages(pathsToClean)
+      
+      toast.error(friendlyError(err, 'নেটওয়ার্কে সমস্যা হচ্ছে। দয়া করে আবার চেষ্টা করুন।'))
       setStep(null)
     }
   }
 
   const busy = step !== null
+  const allImages = [
+    ...existingUrls.map(url => ({ id: url, url, isExisting: true })),
+    ...newFiles.map(nf => ({ id: nf.id, url: nf.preview, isExisting: false }))
+  ]
 
   return (
     <main className="mx-auto max-w-6xl px-4 pb-20 pt-10 sm:px-6 lg:px-8">
       <h1 className="font-display text-3xl font-extrabold text-teal-950 sm:text-4xl">{editing ? 'প্রোডাক্ট এডিট করুন' : 'নতুন প্রোডাক্ট যোগ করুন'}</h1>
       <p className="mt-2 max-w-xl text-slate-500">
-        {editing ? 'দাম, ছবি বা বিবরণ বদলে সেভ করুন। চালু এসক্রো অর্ডার থাকলে এডিট বন্ধ থাকে।' : 'পরিষ্কার ছবি আর সৎ বিবরণ দিলে দ্রুত ক্রেতা পাবেন।'}
+        {editing ? 'দাম, ছবি বা বিবরণ বদলে সেভ করুন। চালু এসক্রো অর্ডার থাকলে এডিট বন্ধ থাকে।' : 'পরিষ্কার একাধিক ছবি আর সৎ বিবরণ দিলে দ্রুত ক্রেতা পাবেন।'}
       </p>
 
-      <form onSubmit={onSubmit} noValidate className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-        <div className="lg:sticky lg:top-24 lg:self-start">
-          <label
-            onDragOver={(e) => {
-              e.preventDefault()
-              setDragging(true)
-            }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={(e) => {
-              e.preventDefault()
-              setDragging(false)
-              pickFile(e.dataTransfer.files?.[0])
-            }}
-            className={`group relative flex aspect-[4/3] cursor-pointer flex-col items-center justify-center overflow-hidden rounded-[28px] border-2 border-dashed text-center transition ${
-              dragging ? 'border-teal-600 bg-teal-50' : 'border-teal-900/20 bg-white hover:border-teal-600/60 hover:bg-teal-50/50'
-            }`}
-          >
-            <input ref={inputRef} type="file" accept="image/*" className="sr-only" onChange={(e) => pickFile(e.target.files?.[0])} />
-            {shownImage ? (
-              <>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={shownImage} alt="নির্বাচিত ছবির প্রিভিউ" className="absolute inset-0 h-full w-full object-cover" />
-                <span className="absolute bottom-3 left-3 rounded-full bg-white/80 px-3 py-1.5 text-sm font-semibold text-teal-950 backdrop-blur-md">
-                  ছবি বদলান
+      <form onSubmit={onSubmit} noValidate className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1.5fr)]">
+        
+        {/* --- MULTIPLE IMAGES SECTION --- */}
+        <div className="lg:sticky lg:top-24 lg:self-start space-y-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            
+            {/* Add Photo Button / Dropzone */}
+            {allImages.length < 5 && (
+              <label
+                onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={(e) => { e.preventDefault(); setDragging(false); pickFiles(e.dataTransfer.files) }}
+                className={`group relative flex aspect-square cursor-pointer flex-col items-center justify-center overflow-hidden rounded-[24px] border-2 border-dashed transition ${
+                  dragging ? 'border-teal-600 bg-teal-50' : 'border-teal-900/20 bg-teal-900/[0.02] hover:border-teal-600/60 hover:bg-teal-50/50'
+                }`}
+              >
+                <input ref={inputRef} type="file" multiple accept="image/*" className="sr-only" onChange={(e) => { pickFiles(e.target.files); e.target.value = '' }} />
+                <span className="mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-white text-teal-800 shadow-sm transition group-hover:scale-110">
+                  <Icon name="plus" className="h-5 w-5" />
                 </span>
-              </>
-            ) : (
-              <div className="px-6">
-                <span className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-teal-900/[0.06] text-teal-800 transition group-hover:scale-105">
-                  <Icon name="upload" className="h-7 w-7" />
-                </span>
-                <p className="font-semibold text-teal-950">ছবি টেনে এনে ছাড়ুন, অথবা ক্লিক করুন</p>
-                <p className="mt-1 text-sm text-slate-500">আপলোডের আগে ছবি অটো ছোট করা হয়: মোবাইল ডাটা বাঁচবে</p>
-              </div>
+                <p className="text-xs font-semibold text-teal-900">ছবি যোগ করুন</p>
+                <p className="mt-0.5 text-[10px] text-slate-500">{allImages.length}/5</p>
+              </label>
             )}
-          </label>
-          {shownImage && (
-            <button
-              type="button"
-              onClick={() => {
-                setFile(null)
-                setPreview(null)
-                setExistingUrl(null)
-                if (inputRef.current) inputRef.current.value = ''
-              }}
-              className="mt-3 flex items-center gap-1.5 text-sm font-semibold text-rose-600 hover:text-rose-700"
-            >
-              <Icon name="trash" className="h-4 w-4" /> ছবি সরিয়ে ফেলুন
-            </button>
-          )}
+
+            {/* Image Previews */}
+            {allImages.map((img) => {
+              const isFront = img.id === primaryId
+              return (
+                <div key={img.id} className={`group relative aspect-square overflow-hidden rounded-[24px] border-2 transition ${isFront ? 'border-emerald-500 shadow-md' : 'border-transparent ring-1 ring-slate-200'}`}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={img.url} alt="Product" className="h-full w-full object-cover" />
+                  
+                  {/* Front Overlay Badge */}
+                  {isFront && (
+                    <div className="absolute left-2 top-2 rounded-full bg-emerald-500 px-2.5 py-0.5 text-[10px] font-bold tracking-wide text-white shadow-sm">
+                      FRONT
+                    </div>
+                  )}
+
+                  {/* Actions Overlay (Hover) */}
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-900/60 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100">
+                    {!isFront && (
+                      <button type="button" onClick={() => setPrimaryId(img.id)} className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-teal-900 shadow-sm hover:bg-teal-50">
+                        প্রথম ছবি করুন
+                      </button>
+                    )}
+                    <button type="button" onClick={() => removeImage(img.id, img.isExisting)} className="flex h-8 w-8 items-center justify-center rounded-full bg-rose-500 text-white shadow-sm hover:bg-rose-600">
+                      <Icon name="trash" className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          {allImages.length > 0 && <p className="text-sm text-slate-500">যে ছবিটি সামনে দেখাতে চান, সেটির ওপর মাউস নিয়ে &apos;প্রথম ছবি করুন&apos;-এ ক্লিক করুন।</p>}
         </div>
 
+        {/* --- FORM FIELDS --- */}
         <div className="space-y-5 rounded-[28px] bg-white p-6 shadow-[0_14px_30px_-18px_rgba(10,61,56,0.3)] ring-1 ring-teal-900/[0.06] sm:p-8">
           <Field label="প্রোডাক্টের নাম" error={errors.title}>
             {(p) => <Input {...p} value={values.title} onChange={set('title')} maxLength={80} placeholder="যেমন: Engineering Drawing Tools Set" />}

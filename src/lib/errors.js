@@ -51,8 +51,10 @@ export function friendlyError(err, fallback = 'কিছু একটা সম�
   // Postgres / PostgREST
   if (code === '42501' || low.includes('row-level security') || low.includes('permission denied'))
     return 'এই কাজের অনুমতি নেই। লগইন করা আছে কিনা দেখুন।'
-  if (code === 'PGRST202' || code === '42P01' || code === 'PGRST205' || low.includes('does not exist'))
-    return 'এই ফিচারের ডাটাবেস সেটআপ বাকি আছে। /supabase ফোল্ডারের SQL ফাইলটি চালান।'
+  
+  // if (code === 'PGRST202' || code === '42P01' || code === 'PGRST205' || low.includes('does not exist'))
+  //   return 'এই ফিচারের ডাটাবেস সেটআপ বাকি আছে। /supabase ফোল্ডারের SQL ফাইলটি চালান।'
+  
   if (code === '23505') {
     if (low.includes('deposit_trx')) return 'এই TrxID আগেই ব্যবহার করা হয়েছে।'
     if (low.includes('reports_one_open')) return 'আপনি আগেই এটি রিপোর্ট করেছেন। আমাদের টিম দেখছে।'
@@ -60,5 +62,6 @@ export function friendlyError(err, fallback = 'কিছু একটা সম�
   }
   if (low.includes('bucket not found')) return 'ছবি রাখার বাকেট (product-images) পাওয়া যায়নি।'
 
+  // আসল এররটি ধরা পড়ে গেছে এবং ফিক্স করা হয়েছে, তাই ইউজারদের জন্য ডিফল্ট মেসেজে ফিরে গেলাম
   return fallback
 }

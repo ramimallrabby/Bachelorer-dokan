@@ -10,6 +10,9 @@ export default function ListingCard({ item }) {
   const condition = labelOf(CONDITIONS, item.condition)
   const category = labelOf(CATEGORIES, item.category)
 
+  // নতুন image_urls অ্যারে থেকে প্রথম (front) ছবিটি নেওয়া হচ্ছে
+  const frontImage = item.image_urls?.[0] || item.image_url
+
   return (
     <Link
       href={`/product/${item.id}`}
@@ -17,7 +20,7 @@ export default function ListingCard({ item }) {
     >
       <div className="relative aspect-[4/3] overflow-hidden rounded-[20px] bg-teal-900/[0.05]">
         <SmartImage
-          src={item.image_url}
+          src={frontImage}
           alt={item.title}
           className="h-full w-full transition duration-700 ease-out group-hover:scale-[1.05]"
         />

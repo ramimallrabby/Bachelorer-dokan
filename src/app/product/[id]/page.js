@@ -4,18 +4,17 @@ import { notFound } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import Icon from '@/components/ui/Icons'
-import { Avatar, SmartImage } from '@/components/ui/Media'
+import { Avatar } from '@/components/ui/Media'
 import ProductActions from '@/components/product/ProductActions'
 import ReportButton from '@/components/report/ReportButton'
 import ViewCounter from '@/components/product/ViewCounter'
+import ImageGallery from '@/components/product/ImageGallery'
 import { fetchListingById } from '@/lib/services/listings'
 import { CATEGORIES, CONDITIONS, labelOf } from '@/lib/constants'
 import { formatDate, formatPrice, timeAgo } from '@/lib/format'
 
-// Always fresh: price/status change when an order is placed.
 export const dynamic = 'force-dynamic'
 
-// cache() dedupes the query between generateMetadata and the page within one request.
 const getListing = cache(fetchListingById)
 
 export async function generateMetadata({ params }) {
@@ -24,20 +23,18 @@ export async function generateMetadata({ params }) {
   if (!listing) return { title: 'প্রোডাক্ট পাওয়া যায়নি' }
   const title = `${listing.title} (${formatPrice(listing.price)})`
   const description = (listing.description || '').slice(0, 160)
+  const img = listing.image_urls?.[0] || listing.image_url
   return {
     title,
     description,
-    openGraph: { title, description, images: listing.image_url ? [listing.image_url] : [] },
+    openGraph: { title, description, images: img ? [img] : [] },
   }
 }
 
 export default async function ProductPage({ params }) {
   const { id } = await params
-  let listing = await getListing(id) // real errors bubble up to app/error.js
+  let listing = await getListing(id)
 
-  // --- CRITICAL SSR AUTH FIX START ---
-  // নরমাল ফেচে প্রোডাক্ট না পেলে (যেমন hidden প্রোডাক্টের ক্ষেত্রে), 
-  // ইউজারের কুকি ব্যবহার করে সার্ভার-সাইড থেকে অথেনটিকেটেড রিকোয়েস্ট পাঠানো হচ্ছে।
   if (!listing) {
     try {
       const cookieStore = await cookies()
@@ -60,11 +57,8 @@ export default async function ProductPage({ params }) {
         .single()
         
       listing = data
-    } catch (error) {
-      // কোনো সমস্যা হলে ইগনোর করবে এবং নিচে notFound() এ চলে যাবে
-    }
+    } catch (error) {}
   }
-  // --- CRITICAL SSR AUTH FIX END ---
 
   if (!listing) notFound()
 
@@ -72,6 +66,9 @@ export default async function ProductPage({ params }) {
   const condition = labelOf(CONDITIONS, listing.condition)
   const seller = listing.seller
   const sellerName = seller?.full_name || 'অজানা বিক্রেতা'
+  
+  // একাধিক ছবির অ্যারে তৈরি
+  const images = listing.image_urls?.length ? listing.image_urls : (listing.image_url ? [listing.image_url] : [])
 
   return (
     <main className="mx-auto max-w-6xl px-4 pb-36 pt-6 sm:px-6 md:pb-16 lg:px-8">
@@ -82,21 +79,8 @@ export default async function ProductPage({ params }) {
 
       <div className="mt-3 grid gap-8 lg:grid-cols-[1.15fr_1fr] lg:gap-12">
         <div className="relative lg:sticky lg:top-24 lg:self-start">
-          <div className="relative aspect-[4/3] overflow-hidden rounded-[32px] bg-teal-900/[0.05] shadow-[0_30px_60px_-30px_rgba(10,61,56,0.5)] ring-1 ring-teal-900/10">
-            <SmartImage src={listing.image_url} alt={listing.title} className="h-full w-full" />
-            {listing.location && (
-              <span className="absolute left-4 top-4 flex items-center gap-1.5 rounded-full bg-white/70 px-3.5 py-1.5 text-sm font-semibold text-teal-950 ring-1 ring-white/60 backdrop-blur-md">
-                <Icon name="pin" className="h-4 w-4 text-teal-700" /> {listing.location}
-              </span>
-            )}
-            {listing.status !== 'active' && (
-              <div className="absolute inset-0 flex items-center justify-center bg-teal-950/50 backdrop-blur-[3px]">
-                <span className="rounded-full bg-white/90 px-6 py-2 text-lg font-bold text-teal-950">
-                  {listing.status === 'sold' ? 'বিক্রি হয়ে গেছে' : listing.status === 'hidden' ? 'পর্যালোচনায়' : 'রিজার্ভড'}
-                </span>
-              </div>
-            )}
-          </div>
+          {/* গ্যালারি কম্পোনেন্ট */}
+          <ImageGallery urls={images} title={listing.title} location={listing.location} status={listing.status} />
         </div>
 
         <div className="flex flex-col">
@@ -148,7 +132,7 @@ export default async function ProductPage({ params }) {
               id: listing.id,
               title: listing.title,
               price: listing.price,
-              image_url: listing.image_url,
+              image_url: images[0] || null,
               status: listing.status,
               seller_id: listing.seller_id,
             }}

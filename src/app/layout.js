@@ -1,6 +1,7 @@
 import { Hind_Siliguri, Noto_Serif_Bengali } from 'next/font/google'
 import { Toaster } from 'sonner'
 import './globals.css'
+import SupportWidget from '@/components/support/SupportWidget'
 import './dokan.css' // keep AFTER globals.css
 import { AuthProvider } from '@/components/auth/AuthProvider'
 import { LiveProvider } from '@/components/auth/LiveProvider'
@@ -48,6 +49,8 @@ export default function RootLayout({ children }) {
             </Suspense>
             {children}
             <Footer />
+            {/* সাপোর্ট উইজেটটি এখানে যুক্ত করা হয়েছে */}
+            <SupportWidget />
           </LiveProvider>
         </AuthProvider>
         <Toaster
