@@ -199,7 +199,7 @@ export default function ListingForm({ listing = null }) {
       if (pathsToClean.length > 0) removeListingImages(pathsToClean)
       
       // নেটওয়ার্ক বা সাইজের সমস্যা হলে ক্লিয়ার মেসেজ দেখাবে
-      toast.error(friendlyError(err, 'নেটওয়ার্ক দুর্বল অথবা ছবির সাইজ অনেক বড়! দয়া করে ছোট ছবি দিয়ে আবার চেষ্টা করুন।'))
+     toast.error(err?.message || err?.toString() || 'Unknown Error')
       setStep(null)
     }
   }
