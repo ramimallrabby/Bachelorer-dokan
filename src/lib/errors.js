@@ -63,5 +63,5 @@ export function friendlyError(err, fallback = 'কিছু একটা সম�
   if (low.includes('bucket not found')) return 'ছবি রাখার বাকেট (product-images) পাওয়া যায়নি।'
 
   // আসল এররটি ধরা পড়ে গেছে এবং ফিক্স করা হয়েছে, তাই ইউজারদের জন্য ডিফল্ট মেসেজে ফিরে গেলাম
-  return fallback
+  return err?.message || err?.toString() || 'Unknown Error'
 }
