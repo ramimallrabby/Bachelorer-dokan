@@ -8,7 +8,7 @@ import Icon from '@/components/ui/Icons'
 import { Chip, Field, Input, Select, Textarea } from '@/components/ui/Form'
 import { compressImage } from '@/lib/image'
 import { friendlyError } from '@/lib/errors'
-import { CATEGORIES, CONDITIONS, MAX_IMAGE_MB } from '@/lib/constants'
+import { CATEGORIES, CONDITIONS } from '@/lib/constants'
 import { createListing, fetchLocations, removeListingImages, updateListing, uploadListingImage } from '@/lib/services/listings'
 
 const EMPTY = { title: '', category: '', condition: 'good', price: '', location: '', description: '' }
@@ -43,12 +43,11 @@ export default function ListingForm({ listing = null }) {
   )
 
   // --- MULTIPLE IMAGES STATE ---
-  // ডাটাবেস আপডেট হওয়ার আগে image_url ছিল, এখন image_urls (Array)
   const initialUrls = listing?.image_urls?.length ? listing.image_urls : (listing?.image_url ? [listing.image_url] : [])
   const [existingUrls, setExistingUrls] = useState(initialUrls)
   const [newFiles, setNewFiles] = useState([]) // Array of { id, file, preview }
-  const [deletedUrls, setDeletedUrls] = useState([]) // ডিলিট করা পুরনো ছবির লিস্ট (পরে স্টোরেজ থেকে মুছতে)
-  const [primaryId, setPrimaryId] = useState(initialUrls[0] || null) // Front ছবির ID বা URL
+  const [deletedUrls, setDeletedUrls] = useState([]) 
+  const [primaryId, setPrimaryId] = useState(initialUrls[0] || null) 
 
   const [errors, setErrors] = useState({})
   const [dragging, setDragging] = useState(false)
@@ -59,7 +58,6 @@ export default function ListingForm({ listing = null }) {
     fetchLocations().then(setLocations).catch(() => {})
   }, [])
 
-  // মেমরি লিক রোধ করতে আনমাউন্ট হওয়ার সময় URL.revokeObjectURL কল করা
   useEffect(() => {
     return () => newFiles.forEach(nf => URL.revokeObjectURL(nf.preview))
   }, [newFiles])
@@ -78,19 +76,21 @@ export default function ListingForm({ listing = null }) {
     const validFiles = []
     for (const f of arr) {
       if (!f.type.startsWith('image/')) {
-        toast.error(`${f.name} কোনো ছবি নয়।`)
+        toast.error(`'${f.name}' কোনো ছবি নয়।`)
         continue
       }
-      if (f.size > MAX_IMAGE_MB * 1024 * 1024) {
-        toast.error(`${f.name} এর সাইজ ${MAX_IMAGE_MB} MB এর বেশি।`)
-        continue
+      
+      // --- Hard Limit: 2MB ---
+      if (f.size > 2 * 1024 * 1024) { 
+        toast.error(`'${f.name}' এর সাইজ ২ MB এর বেশি! দয়া করে ছোট ছবি দিন।`)
+        continue // ছবি বড় হলে এখানেই রিজেক্ট করে দিবে
       }
+      
       validFiles.push({ id: crypto.randomUUID(), file: f, preview: URL.createObjectURL(f) })
     }
 
     setNewFiles((prev) => {
       const updated = [...prev, ...validFiles]
-      // যদি আগে কোনো প্রাইমারি ছবি না থাকে, তবে প্রথমটিকে প্রাইমারি বানাবে
       if (!primaryId && updated.length > 0 && existingUrls.length === 0) {
         setPrimaryId(updated[0].id)
       }
@@ -105,7 +105,6 @@ export default function ListingForm({ listing = null }) {
     } else {
       setNewFiles(prev => prev.filter(nf => nf.id !== id))
     }
-    // যদি প্রাইমারি ছবি ডিলিট হয়ে যায়, অন্য একটিকে প্রাইমারি করবে
     if (primaryId === id) {
       const remainingExisting = existingUrls.filter(url => url !== id)
       const remainingNew = newFiles.filter(nf => nf.id !== id)
@@ -125,7 +124,7 @@ export default function ListingForm({ listing = null }) {
 
     const maxAttempts = 3
     let attempts = 0
-    let uploadedResults = [] // সফলভাবে আপলোড হওয়া নতুন ছবিগুলো
+    let uploadedResults = [] 
     let blobsToUpload = []
 
     try {
@@ -139,7 +138,6 @@ export default function ListingForm({ listing = null }) {
       while (attempts < maxAttempts) {
         attempts++
         try {
-          // নতুন ছবিগুলো আপলোড করা
           for (let i = 0; i < blobsToUpload.length; i++) {
             if (!blobsToUpload[i].uploadedData) {
               setStep(attempts > 1 ? `আবার চেষ্টা করা হচ্ছে (${attempts}/${maxAttempts})...` : `ছবি আপলোড হচ্ছে (${i + 1}/${blobsToUpload.length})...`)
@@ -151,10 +149,8 @@ export default function ListingForm({ listing = null }) {
 
           setStep('প্রোডাক্ট সেভ হচ্ছে...')
           
-          // সব URL (পুরনো + নতুন) একত্রিত করা
           let finalUrls = [...existingUrls, ...uploadedResults.map(u => u.url)]
           
-          // ফ্রন্ট (প্রাইমারি) ছবিটিকে Array-এর প্রথম ইনডেক্সে (0) নিয়ে আসা
           let frontUrl = null
           if (existingUrls.includes(primaryId)) frontUrl = primaryId
           else {
@@ -174,7 +170,7 @@ export default function ListingForm({ listing = null }) {
             location: values.location.trim(),
             description: values.description.trim(),
             image_urls: finalUrls,
-            image_url: finalUrls[0] || null, // Backward compatibility
+            image_url: finalUrls[0] || null, 
           }
 
           if (editing) {
@@ -187,7 +183,6 @@ export default function ListingForm({ listing = null }) {
             router.push(`/product/${id}`)
           }
 
-          // স্টোরেজ থেকে ডিলিট করা ছবিগুলো রিমুভ করা (Best effort)
           if (deletedUrls.length > 0) {
             const pathsToRemove = deletedUrls.map(url => url.split('/product-images/')[1]).filter(path => path?.startsWith(`${user.id}/`))
             if (pathsToRemove.length > 0) removeListingImages(pathsToRemove)
@@ -200,11 +195,11 @@ export default function ListingForm({ listing = null }) {
         }
       }
     } catch (err) {
-      // যদি এরর হয়, তবে এইমাত্র আপলোড করা নতুন ছবিগুলো স্টোরেজ থেকে মুছে ফেলবে (Orphaned images)
       const pathsToClean = uploadedResults.map(u => u.path)
       if (pathsToClean.length > 0) removeListingImages(pathsToClean)
       
-      toast.error(friendlyError(err, 'নেটওয়ার্কে সমস্যা হচ্ছে। দয়া করে আবার চেষ্টা করুন।'))
+      // নেটওয়ার্ক বা সাইজের সমস্যা হলে ক্লিয়ার মেসেজ দেখাবে
+      toast.error(friendlyError(err, 'নেটওয়ার্ক দুর্বল অথবা ছবির সাইজ অনেক বড়! দয়া করে ছোট ছবি দিয়ে আবার চেষ্টা করুন।'))
       setStep(null)
     }
   }
@@ -224,11 +219,9 @@ export default function ListingForm({ listing = null }) {
 
       <form onSubmit={onSubmit} noValidate className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1.5fr)]">
         
-        {/* --- MULTIPLE IMAGES SECTION --- */}
         <div className="lg:sticky lg:top-24 lg:self-start space-y-3">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             
-            {/* Add Photo Button / Dropzone */}
             {allImages.length < 5 && (
               <label
                 onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
@@ -244,10 +237,11 @@ export default function ListingForm({ listing = null }) {
                 </span>
                 <p className="text-xs font-semibold text-teal-900">ছবি যোগ করুন</p>
                 <p className="mt-0.5 text-[10px] text-slate-500">{allImages.length}/5</p>
+                {/* ইউজারকে সাইজ সম্পর্কে সতর্ক করার জন্য লাল টেক্সট */}
+                <p className="mt-1 text-[10px] font-bold text-rose-500">সর্বোচ্চ ২ MB</p> 
               </label>
             )}
 
-            {/* Image Previews */}
             {allImages.map((img) => {
               const isFront = img.id === primaryId
               return (
@@ -255,14 +249,12 @@ export default function ListingForm({ listing = null }) {
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={img.url} alt="Product" className="h-full w-full object-cover" />
                   
-                  {/* Front Overlay Badge */}
                   {isFront && (
                     <div className="absolute left-2 top-2 rounded-full bg-emerald-500 px-2.5 py-0.5 text-[10px] font-bold tracking-wide text-white shadow-sm">
                       FRONT
                     </div>
                   )}
 
-                  {/* Actions Overlay (Hover) */}
                   <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-900/60 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100">
                     {!isFront && (
                       <button type="button" onClick={() => setPrimaryId(img.id)} className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-teal-900 shadow-sm hover:bg-teal-50">
@@ -280,7 +272,6 @@ export default function ListingForm({ listing = null }) {
           {allImages.length > 0 && <p className="text-sm text-slate-500">যে ছবিটি সামনে দেখাতে চান, সেটির ওপর মাউস নিয়ে &apos;প্রথম ছবি করুন&apos;-এ ক্লিক করুন।</p>}
         </div>
 
-        {/* --- FORM FIELDS --- */}
         <div className="space-y-5 rounded-[28px] bg-white p-6 shadow-[0_14px_30px_-18px_rgba(10,61,56,0.3)] ring-1 ring-teal-900/[0.06] sm:p-8">
           <Field label="প্রোডাক্টের নাম" error={errors.title}>
             {(p) => <Input {...p} value={values.title} onChange={set('title')} maxLength={80} placeholder="যেমন: Engineering Drawing Tools Set" />}
