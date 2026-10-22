@@ -57,7 +57,7 @@ export default function SupportWidget() {
       setMessage('')
       setFile(null)
     } catch (error) {
-      toast.error(error?.message || error?.toString() || 'Unknown Error')
+      toast.error('মেসেজ পাঠাতে সমস্যা হয়েছে। আবার চেষ্টা করুন।')
     } finally {
       setBusy(false)
     }
